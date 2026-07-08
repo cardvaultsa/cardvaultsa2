@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "export NODE_ENV=development && pnpm run build && pnpm run start",
     "build": "node ./build.mjs",
-    "now-build": "pnpm run vercel-build",
     "vercel-build": "node ./build.mjs && pnpm --dir ../pokedex-vault exec vite build --config vite.config.ts --outDir ../api-server/dist/public && node ./scripts/mirror-vercel-output.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
