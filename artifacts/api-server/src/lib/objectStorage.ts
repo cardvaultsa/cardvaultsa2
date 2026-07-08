@@ -1,8 +1,9 @@
-import { Storage, File } from "@google-cloud/storage";
-import { Readable } from "stream";
-import { randomUUID } from "crypto";
+import { Storage, type File } from "@google-cloud/storage";
+import { Readable } from "node:stream";
+import { randomUUID } from "node:crypto";
+import type { ReadableStream } from "node:stream/web";
 import {
-  ObjectAclPolicy,
+  type ObjectAclPolicy,
   ObjectPermission,
   canAccessObject,
   getObjectAclPolicy,
@@ -46,33 +47,38 @@ export class ObjectStorageService {
       new Set(
         pathsStr
           .split(",")
-          .map((path) => path.trim())
-          .filter((path) => path.length > 0)
-      )
+          .map((path) => normalizeObjectStorePath(path.trim()))
+          .filter((path): path is string => path != null),
+      ),
     );
     if (paths.length === 0) {
       throw new Error(
         "PUBLIC_OBJECT_SEARCH_PATHS not set. Create a bucket in 'Object Storage' " +
-          "tool and set PUBLIC_OBJECT_SEARCH_PATHS env var (comma-separated paths)."
+          "tool and set PUBLIC_OBJECT_SEARCH_PATHS env var (comma-separated paths).",
       );
     }
     return paths;
   }
 
   getPrivateObjectDir(): string {
-    const dir = process.env.PRIVATE_OBJECT_DIR || "";
+    const dir = normalizeObjectStorePath(process.env.PRIVATE_OBJECT_DIR || "");
     if (!dir) {
       throw new Error(
         "PRIVATE_OBJECT_DIR not set. Create a bucket in 'Object Storage' " +
-          "tool and set PRIVATE_OBJECT_DIR env var."
+          "tool and set PRIVATE_OBJECT_DIR env var.",
       );
     }
     return dir;
   }
 
   async searchPublicObject(filePath: string): Promise<File | null> {
+    const relativePath = normalizeRelativeObjectPath(filePath);
+    if (!relativePath) {
+      return null;
+    }
+
     for (const searchPath of this.getPublicObjectSearchPaths()) {
-      const fullPath = `${searchPath}/${filePath}`;
+      const fullPath = `${searchPath}/${relativePath}`;
 
       const { bucketName, objectName } = parseObjectPath(fullPath);
       const bucket = objectStorageClient.bucket(bucketName);
@@ -88,9 +94,9 @@ export class ObjectStorageService {
   }
 
   async downloadObject(
-  file: File,
-  cacheTtlSec: number = 3600,
-): Promise<globalThis.Response> {
+    file: File,
+    cacheTtlSec: number = 3600,
+  ): Promise<globalThis.Response> {
     const [metadata] = await file.getMetadata();
     const aclPolicy = await getObjectAclPolicy(file);
     const isPublic = aclPolicy?.visibility === "public";
@@ -111,13 +117,6 @@ export class ObjectStorageService {
 
   async getObjectEntityUploadURL(): Promise<string> {
     const privateObjectDir = this.getPrivateObjectDir();
-    if (!privateObjectDir) {
-      throw new Error(
-        "PRIVATE_OBJECT_DIR not set. Create a bucket in 'Object Storage' " +
-          "tool and set PRIVATE_OBJECT_DIR env var."
-      );
-    }
-
     const objectId = randomUUID();
     const fullPath = `${privateObjectDir}/uploads/${objectId}`;
 
@@ -132,21 +131,12 @@ export class ObjectStorageService {
   }
 
   async getObjectEntityFile(objectPath: string): Promise<File> {
-    if (!objectPath.startsWith("/objects/")) {
+    const entityId = getObjectEntityId(objectPath);
+    if (!entityId) {
       throw new ObjectNotFoundError();
     }
 
-    const parts = objectPath.slice(1).split("/");
-    if (parts.length < 2) {
-      throw new ObjectNotFoundError();
-    }
-
-    const entityId = parts.slice(1).join("/");
-    let entityDir = this.getPrivateObjectDir();
-    if (!entityDir.endsWith("/")) {
-      entityDir = `${entityDir}/`;
-    }
-    const objectEntityPath = `${entityDir}${entityId}`;
+    const objectEntityPath = `${this.getPrivateObjectDir()}/${entityId}`;
     const { bucketName, objectName } = parseObjectPath(objectEntityPath);
     const bucket = objectStorageClient.bucket(bucketName);
     const objectFile = bucket.file(objectName);
@@ -163,24 +153,25 @@ export class ObjectStorageService {
     }
 
     const url = new URL(rawPath);
-    const rawObjectPath = url.pathname;
-
-    let objectEntityDir = this.getPrivateObjectDir();
-    if (!objectEntityDir.endsWith("/")) {
-      objectEntityDir = `${objectEntityDir}/`;
+    const rawObjectPath = normalizeObjectStorePath(decodeURIComponent(url.pathname));
+    if (!rawObjectPath) {
+      return url.pathname;
     }
 
-    if (!rawObjectPath.startsWith(objectEntityDir)) {
+    const objectEntityDir = this.getPrivateObjectDir();
+    if (!rawObjectPath.startsWith(`${objectEntityDir}/`)) {
       return rawObjectPath;
     }
 
-    const entityId = rawObjectPath.slice(objectEntityDir.length);
-    return `/objects/${entityId}`;
+    const entityId = normalizeRelativeObjectPath(
+      rawObjectPath.slice(objectEntityDir.length + 1),
+    );
+    return entityId ? `/objects/${entityId}` : rawObjectPath;
   }
 
   async trySetObjectEntityAclPolicy(
     rawPath: string,
-    aclPolicy: ObjectAclPolicy
+    aclPolicy: ObjectAclPolicy,
   ): Promise<string> {
     const normalizedPath = this.normalizeObjectEntityPath(rawPath);
     if (!normalizedPath.startsWith("/")) {
@@ -209,16 +200,47 @@ export class ObjectStorageService {
   }
 }
 
+function normalizeObjectStorePath(path: string): string | null {
+  const trimmed = path.trim();
+  if (!trimmed) {
+    return null;
+  }
+  return `/${trimmed.split("/").filter(Boolean).join("/")}`;
+}
+
+function normalizeRelativeObjectPath(path: string): string | null {
+  const segments = path
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+  if (
+    segments.length === 0 ||
+    segments.some((segment) => segment === "." || segment === "..")
+  ) {
+    return null;
+  }
+  return segments.join("/");
+}
+
+function getObjectEntityId(objectPath: string): string | null {
+  if (!objectPath.startsWith("/objects/")) {
+    return null;
+  }
+  return normalizeRelativeObjectPath(objectPath.slice("/objects/".length));
+}
+
 function parseObjectPath(path: string): {
   bucketName: string;
   objectName: string;
 } {
-  if (!path.startsWith("/")) {
-    path = `/${path}`;
-  }
-  const pathParts = path.split("/");
-  if (pathParts.length < 3) {
+  const normalizedPath = normalizeObjectStorePath(path);
+  if (!normalizedPath) {
     throw new Error("Invalid path: must contain at least a bucket name");
+  }
+
+  const pathParts = normalizedPath.split("/");
+  if (pathParts.length < 3 || !pathParts[1] || !pathParts.slice(2).join("/")) {
+    throw new Error("Invalid path: must contain a bucket name and object name");
   }
 
   const bucketName = pathParts[1];
@@ -256,15 +278,19 @@ async function signObjectURL({
       },
       body: JSON.stringify(request),
       signal: AbortSignal.timeout(30_000),
-    }
+    },
   );
   if (!response.ok) {
     throw new Error(
       `Failed to sign object URL, errorcode: ${response.status}, ` +
-        `make sure you're running on Replit`
+        `make sure you're running on Replit`,
     );
   }
 
-  const { signed_url: signedURL } = await response.json() as { signed_url: string };
-  return signedURL;
+  const payload = (await response.json()) as { signed_url?: unknown };
+  if (typeof payload.signed_url !== "string" || payload.signed_url.length === 0) {
+    throw new Error("Failed to sign object URL: missing signed_url in response");
+  }
+
+  return payload.signed_url;
 }
