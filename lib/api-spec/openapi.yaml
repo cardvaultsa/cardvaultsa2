@@ -1,0 +1,2983 @@
+openapi: 3.1.0
+info:
+  title: Api
+  version: 0.1.0
+  description: PokéVault API — private Pokémon card collection and resale tracker
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: Auth
+    description: Browser authentication endpoints.
+  - name: Storage
+    description: Object storage upload and serving endpoints.
+  - name: Cards
+    description: Pokémon card inventory management.
+  - name: SealedProducts
+    description: Sealed product inventory management.
+  - name: Images
+    description: Photo management for cards and sealed products.
+  - name: Dashboard
+    description: Inventory summary and analytics.
+  - name: Listing
+    description: Marketplace listing description generator.
+  - name: Expenses
+    description: Business expense tracking.
+  - name: Customers
+    description: Customer CRM.
+  - name: Pickups
+    description: Local pickup tracker.
+  - name: Export
+    description: Data export and backup.
+  - name: Trash
+    description: Recycle bin — restore or permanently delete soft-deleted items.
+  - name: Backup
+    description: Full JSON backup and restore.
+  - name: Collection
+    description: Collection intelligence — stats, duplicates, set completion.
+  - name: Market
+    description: Market value tracking, price history, portfolio analytics.
+  - name: Analytics
+    description: Deep analytics — set performance, acquisitions, sold P&L, inventory breakdowns.
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  # Auth
+  /auth/user:
+    get:
+      tags: [Auth]
+      operationId: getCurrentAuthUser
+      summary: Get the currently authenticated user
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      responses:
+        '200':
+          description: Auth status resolved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthUserEnvelope'
+  /login:
+    get:
+      tags: [Auth]
+      operationId: beginBrowserLogin
+      summary: Start the browser OIDC login flow
+      parameters:
+        - name: returnTo
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '302':
+          description: Redirect to OIDC authorization endpoint.
+  /callback:
+    get:
+      tags: [Auth]
+      operationId: handleBrowserLoginCallback
+      summary: Complete the browser OIDC login flow
+      parameters:
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: state
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: iss
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uri
+      responses:
+        '302':
+          description: Redirect to returnTo path on success.
+  /logout:
+    get:
+      tags: [Auth]
+      operationId: logoutBrowserSession
+      summary: Clear the session and begin OIDC logout
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationSessionHeader'
+        - $ref: '#/components/parameters/SessionCookie'
+      responses:
+        '302':
+          description: Redirect to OIDC provider logout URL.
+
+  # Storage
+  /storage/uploads/request-url:
+    post:
+      tags: [Storage]
+      operationId: requestUploadUrl
+      summary: Request a presigned URL for file upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadUrlRequest'
+      responses:
+        '200':
+          description: Presigned upload URL generated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadUrlResponse'
+        '400':
+          description: Missing or invalid required fields.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '500':
+          description: Failed to generate upload URL.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /storage/public-objects/{filePath}:
+    get:
+      tags: [Storage]
+      operationId: getPublicObject
+      summary: Serve a public asset
+      parameters:
+        - name: filePath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Object content streamed.
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: File not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+  /storage/objects/{objectPath}:
+    get:
+      tags: [Storage]
+      operationId: getStorageObject
+      summary: Serve a private object entity
+      parameters:
+        - name: objectPath
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Object content streamed.
+          content:
+            '*/*':
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Object not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  # Cards
+  /cards:
+    get:
+      tags: [Cards]
+      operationId: listCards
+      summary: List all cards with optional filters
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: set
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: condition
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: location
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: rarity
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [name, set, createdAt, quantity, rarity]
+        - name: order
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+      responses:
+        '200':
+          description: List of cards.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Card'
+    post:
+      tags: [Cards]
+      operationId: createCard
+      summary: Create a new card
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CardInput'
+      responses:
+        '201':
+          description: Card created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Card'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /cards/bulk:
+    post:
+      tags: [Cards]
+      operationId: bulkCreateCards
+      summary: Create multiple cards at once
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cards]
+              properties:
+                cards:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/CardInput'
+                  minItems: 1
+      responses:
+        '201':
+          description: Cards created.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [created, count]
+                properties:
+                  created:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Card'
+                  count:
+                    type: integer
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /cards/{id}:
+    get:
+      tags: [Cards]
+      operationId: getCard
+      summary: Get a single card
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Card found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CardDetail'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    patch:
+      tags: [Cards]
+      operationId: updateCard
+      summary: Update a card
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CardUpdate'
+      responses:
+        '200':
+          description: Card updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Card'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      tags: [Cards]
+      operationId: deleteCard
+      summary: Delete a card
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Deleted.
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  # Card Images
+  /cards/{id}/images:
+    get:
+      tags: [Images]
+      operationId: listCardImages
+      summary: List images for a card
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of images.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ItemImage'
+    post:
+      tags: [Images]
+      operationId: addCardImage
+      summary: Attach an uploaded image to a card
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageInput'
+      responses:
+        '201':
+          description: Image attached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemImage'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /cards/{id}/images/{imageId}:
+    delete:
+      tags: [Images]
+      operationId: deleteCardImage
+      summary: Remove an image from a card
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: imageId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Deleted.
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  # Sealed Products
+  /sealed-products:
+    get:
+      tags: [SealedProducts]
+      operationId: listSealedProducts
+      summary: List all sealed products
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: location
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: productType
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: set
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: condition
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [name, set, createdAt, quantity, productType]
+        - name: order
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [asc, desc]
+      responses:
+        '200':
+          description: List of sealed products.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SealedProduct'
+    post:
+      tags: [SealedProducts]
+      operationId: createSealedProduct
+      summary: Create a sealed product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SealedProductInput'
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SealedProduct'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /sealed-products/{id}:
+    get:
+      tags: [SealedProducts]
+      operationId: getSealedProduct
+      summary: Get a single sealed product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SealedProductDetail'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    patch:
+      tags: [SealedProducts]
+      operationId: updateSealedProduct
+      summary: Update a sealed product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SealedProductUpdate'
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SealedProduct'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      tags: [SealedProducts]
+      operationId: deleteSealedProduct
+      summary: Delete a sealed product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Deleted.
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  # Sealed Product Images
+  /sealed-products/{id}/images:
+    get:
+      tags: [Images]
+      operationId: listSealedProductImages
+      summary: List images for a sealed product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: List of images.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ItemImage'
+    post:
+      tags: [Images]
+      operationId: addSealedProductImage
+      summary: Attach an uploaded image to a sealed product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ImageInput'
+      responses:
+        '201':
+          description: Image attached.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ItemImage'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /sealed-products/{id}/images/{imageId}:
+    delete:
+      tags: [Images]
+      operationId: deleteSealedProductImage
+      summary: Remove an image from a sealed product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: imageId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Deleted.
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  # Dashboard
+  /dashboard/summary:
+    get:
+      tags: [Dashboard]
+      operationId: getDashboardSummary
+      summary: Get inventory summary stats
+      responses:
+        '200':
+          description: Dashboard summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DashboardSummary'
+
+  /dashboard/recent:
+    get:
+      tags: [Dashboard]
+      operationId: getDashboardRecent
+      summary: Get recently added cards and products
+      responses:
+        '200':
+          description: Recent items.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecentActivity'
+
+  # Listing Helper
+  /listing/generate:
+    post:
+      tags: [Listing]
+      operationId: generateListing
+      summary: Generate a marketplace-style listing description
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ListingRequest'
+      responses:
+        '200':
+          description: Generated listing description.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListingResult'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  # Expenses
+  /expenses:
+    get:
+      tags: [Expenses]
+      operationId: listExpenses
+      summary: List all expenses
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: dateFrom
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+        - name: dateTo
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: List of expenses.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Expense'
+    post:
+      tags: [Expenses]
+      operationId: createExpense
+      summary: Create an expense
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpenseInput'
+      responses:
+        '201':
+          description: Expense created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Expense'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /expenses/{id}:
+    get:
+      tags: [Expenses]
+      operationId: getExpense
+      summary: Get a single expense
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Expense'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    patch:
+      tags: [Expenses]
+      operationId: updateExpense
+      summary: Update an expense
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExpenseUpdate'
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Expense'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      tags: [Expenses]
+      operationId: deleteExpense
+      summary: Delete an expense
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Deleted.
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  # Customers
+  /customers:
+    get:
+      tags: [Customers]
+      operationId: listCustomers
+      summary: List all customers
+      parameters:
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of customers.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Customer'
+    post:
+      tags: [Customers]
+      operationId: createCustomer
+      summary: Create a customer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerInput'
+      responses:
+        '201':
+          description: Customer created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /customers/{id}:
+    get:
+      tags: [Customers]
+      operationId: getCustomer
+      summary: Get a single customer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    patch:
+      tags: [Customers]
+      operationId: updateCustomer
+      summary: Update a customer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerUpdate'
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      tags: [Customers]
+      operationId: deleteCustomer
+      summary: Delete a customer
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Deleted.
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  # Pickups
+  /pickups:
+    get:
+      tags: [Pickups]
+      operationId: listPickups
+      summary: List all local pickups
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of pickups.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Pickup'
+    post:
+      tags: [Pickups]
+      operationId: createPickup
+      summary: Create a local pickup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PickupInput'
+      responses:
+        '201':
+          description: Pickup created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pickup'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /pickups/{id}:
+    get:
+      tags: [Pickups]
+      operationId: getPickup
+      summary: Get a single pickup
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pickup'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    patch:
+      tags: [Pickups]
+      operationId: updatePickup
+      summary: Update a pickup
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PickupUpdate'
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Pickup'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+    delete:
+      tags: [Pickups]
+      operationId: deletePickup
+      summary: Delete a pickup
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Deleted.
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  # Export
+  /export/csv:
+    get:
+      tags: [Export]
+      operationId: exportCsv
+      summary: Export all inventory data as CSV
+      parameters:
+        - name: type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [cards, sealed, expenses, customers, all]
+      responses:
+        '200':
+          description: CSV file download.
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+
+  /trash:
+    get:
+      tags: [Trash]
+      operationId: listTrash
+      summary: List soft-deleted cards and sealed products
+      responses:
+        '200':
+          description: Trashed items sorted by deletion date.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TrashItem'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /trash/cards/{id}/restore:
+    post:
+      tags: [Trash]
+      operationId: restoreCard
+      summary: Restore a soft-deleted card from trash
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Restored card.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Card'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /trash/sealed-products/{id}/restore:
+    post:
+      tags: [Trash]
+      operationId: restoreSealedProduct
+      summary: Restore a soft-deleted sealed product from trash
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Restored sealed product.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SealedProduct'
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /trash/cards/{id}:
+    delete:
+      tags: [Trash]
+      operationId: hardDeleteCard
+      summary: Permanently delete a trashed card and its images
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Permanently deleted.
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /trash/sealed-products/{id}:
+    delete:
+      tags: [Trash]
+      operationId: hardDeleteSealedProduct
+      summary: Permanently delete a trashed sealed product and its images
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '204':
+          description: Permanently deleted.
+        '404':
+          description: Not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /backup/snapshot:
+    get:
+      tags: [Backup]
+      operationId: getBackupSnapshot
+      summary: Export a full JSON backup of all collection data
+      responses:
+        '200':
+          description: Backup snapshot (JSON attachment).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackupSnapshot'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  /backup/restore:
+    post:
+      tags: [Backup]
+      operationId: restoreBackup
+      summary: Restore collection data from a backup snapshot (upsert by ID)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BackupSnapshot'
+      responses:
+        '200':
+          description: Restore summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RestoreResult'
+        '400':
+          description: Bad request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+        '401':
+          description: Unauthorized.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+  # Collection Intelligence
+  /cards/duplicates:
+    get:
+      tags: [Collection]
+      operationId: getCardDuplicates
+      summary: List cards with duplicate name+set pairs
+      responses:
+        '200':
+          description: List of duplicate groups.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DuplicateGroup'
+
+  /collection/stats:
+    get:
+      tags: [Collection]
+      operationId: getCollectionStats
+      summary: Get collection statistics (by set, rarity, condition, status)
+      responses:
+        '200':
+          description: Collection statistics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CollectionStats'
+
+  /collection/set-totals:
+    get:
+      tags: [Collection]
+      operationId: listSetTotals
+      summary: List all recorded set totals
+      responses:
+        '200':
+          description: Set totals.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SetTotal'
+
+  /collection/set-totals/{setName}:
+    put:
+      tags: [Collection]
+      operationId: upsertSetTotal
+      summary: Set the total card count for a named set (for completion tracking)
+      parameters:
+        - name: setName
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [totalCards]
+              properties:
+                totalCards:
+                  type: integer
+                  minimum: 0
+      responses:
+        '200':
+          description: Set total saved.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SetTotal'
+        '400':
+          description: Validation error.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorEnvelope'
+
+
+  # Market
+  /market/summary:
+    get:
+      operationId: getMarketSummary
+      tags: [Market]
+      summary: Portfolio value summary with period changes
+      responses:
+        "200":
+          description: Market summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /market/history:
+    get:
+      operationId: getMarketHistory
+      tags: [Market]
+      summary: Collection value history (last 30 days by default)
+      parameters:
+        - name: days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+            default: 30
+      responses:
+        "200":
+          description: Value history list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CollectionValueSnapshot"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /market/top-items:
+    get:
+      operationId: getTopItems
+      tags: [Market]
+      summary: Most valuable cards and sealed products
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 20
+      responses:
+        "200":
+          description: Top items list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TopItem"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /market/movers:
+    get:
+      operationId: getMarketMovers
+      tags: [Market]
+      summary: Biggest gainers and losers over the past week
+      responses:
+        "200":
+          description: Movers result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketMovers"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /market/snapshot:
+    post:
+      operationId: createMarketSnapshot
+      tags: [Market]
+      summary: Create a collection value snapshot for today
+      responses:
+        "201":
+          description: Snapshot created or updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionValueSnapshot"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /market/refresh-prices:
+    post:
+      operationId: refreshMarketPrices
+      tags: [Market]
+      summary: Fetch latest prices from Pokemon TCG API and update market values
+      responses:
+        "200":
+          description: Refresh result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketRefreshResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /market/price-history/{itemType}/{itemId}:
+    get:
+      operationId: getItemPriceHistory
+      tags: [Market]
+      summary: Price history for a specific card or sealed product
+      parameters:
+        - name: itemType
+          in: path
+          required: true
+          schema:
+            type: string
+            enum: [card, sealed_product]
+        - name: itemId
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: days
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+            default: 30
+      responses:
+        "200":
+          description: Price history list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PriceHistoryEntry"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+
+  # Analytics
+  /analytics/sets-performance:
+    get:
+      operationId: getSetsPerformance
+      tags: [Analytics]
+      summary: Per-set cost, market value, gain and card counts
+      responses:
+        "200":
+          description: Set performance list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SetPerformanceRow"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /analytics/acquisitions:
+    get:
+      operationId: getAcquisitions
+      tags: [Analytics]
+      summary: Monthly acquisition report (last 24 months)
+      responses:
+        "200":
+          description: Monthly acquisition data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AcquisitionMonth"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /analytics/sold-performance:
+    get:
+      operationId: getSoldPerformance
+      tags: [Analytics]
+      summary: Sold card and sealed P&L by month, plus top sellers
+      responses:
+        "200":
+          description: Sold performance result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SoldPerformanceResult"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /analytics/inventory-breakdown:
+    get:
+      operationId: getInventoryBreakdown
+      tags: [Analytics]
+      summary: Graded vs raw, value tiers, condition and rarity breakdown
+      responses:
+        "200":
+          description: Inventory breakdown
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryBreakdown"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /analytics/wishlist:
+    get:
+      operationId: getWishlistItems
+      tags: [Analytics]
+      summary: Wishlist items with cost estimates
+      responses:
+        "200":
+          description: Wishlist analytics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WishlistAnalytics"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+
+components:
+  responses:
+    Unauthorized:
+      description: Unauthorized — not logged in.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+  parameters:
+    AuthorizationSessionHeader:
+      name: Authorization
+      in: header
+      required: false
+      description: Opaque session token — `Bearer <sid>`.
+      schema:
+        type: string
+    SessionCookie:
+      name: sid
+      in: cookie
+      required: false
+      description: Browser session cookie.
+      schema:
+        type: string
+
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    # Auth
+    AuthUser:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        email:
+          type: [string, 'null']
+          format: email
+        firstName:
+          type: [string, 'null']
+        lastName:
+          type: [string, 'null']
+        profileImageUrl:
+          type: [string, 'null']
+    AuthUserEnvelope:
+      type: object
+      required: [user]
+      properties:
+        user:
+          oneOf:
+            - $ref: '#/components/schemas/AuthUser'
+            - type: 'null'
+
+    # Storage
+    UploadUrlRequest:
+      type: object
+      required: [name, size, contentType]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        size:
+          type: integer
+          minimum: 1
+        contentType:
+          type: string
+          minLength: 1
+    UploadUrlResponse:
+      type: object
+      required: [uploadURL, objectPath]
+      properties:
+        uploadURL:
+          type: string
+          format: uri
+        objectPath:
+          type: string
+        metadata:
+          $ref: '#/components/schemas/UploadUrlRequest'
+
+    # Images
+    ItemImage:
+      type: object
+      required: [id, objectPath, label, sortOrder, createdAt]
+      properties:
+        id:
+          type: integer
+        objectPath:
+          type: string
+        label:
+          type: string
+          description: "front | back | damage | receipt | sealed | other"
+        caption:
+          type: [string, 'null']
+        sortOrder:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+    ImageInput:
+      type: object
+      required: [objectPath, label]
+      properties:
+        objectPath:
+          type: string
+          minLength: 1
+        label:
+          type: string
+          enum: [front, back, damage, receipt, sealed, other]
+        caption:
+          type: string
+        sortOrder:
+          type: integer
+
+    # Cards
+    Card:
+      type: object
+      required: [id, name, set, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        set:
+          type: string
+        cardNumber:
+          type: [string, 'null']
+        rarity:
+          type: [string, 'null']
+        condition:
+          type: [string, 'null']
+        grade:
+          type: [string, 'null']
+        grader:
+          type: [string, 'null']
+        quantity:
+          type: integer
+        purchasePrice:
+          type: [number, 'null']
+        marketValue:
+          type: [number, 'null']
+        askingPrice:
+          type: [number, 'null']
+        soldPrice:
+          type: [number, 'null']
+        soldDate:
+          type: [string, 'null']
+          format: date
+        status:
+          type: string
+          enum: [collection, for_sale, sold, wishlist, trade_binder, grading_pile]
+        purchaseDate:
+          type: [string, 'null']
+          format: date
+        purchaseSource:
+          type: [string, 'null']
+        tradeNotes:
+          type: [string, 'null']
+        location:
+          type: [string, 'null']
+        notes:
+          type: [string, 'null']
+        coverImagePath:
+          type: [string, 'null']
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: [string, 'null']
+          format: date-time
+
+    CardDetail:
+      allOf:
+        - $ref: '#/components/schemas/Card'
+        - type: object
+          properties:
+            images:
+              type: array
+              items:
+                $ref: '#/components/schemas/ItemImage'
+
+    CardInput:
+      type: object
+      required: [name, set]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        set:
+          type: string
+          minLength: 1
+        cardNumber:
+          type: string
+        rarity:
+          type: string
+        condition:
+          type: string
+        grade:
+          type: string
+        grader:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+          default: 1
+        purchasePrice:
+          type: number
+          minimum: 0
+        marketValue:
+          type: number
+          minimum: 0
+        askingPrice:
+          type: number
+          minimum: 0
+        status:
+          type: string
+          enum: [collection, for_sale, sold, wishlist, trade_binder, grading_pile]
+          default: collection
+        location:
+          type: string
+        notes:
+          type: string
+        purchaseDate:
+          type: string
+          format: date
+        purchaseSource:
+          type: string
+        tradeNotes:
+          type: string
+
+    CardUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        set:
+          type: string
+          minLength: 1
+        cardNumber:
+          type: string
+        rarity:
+          type: string
+        condition:
+          type: string
+        grade:
+          type: string
+        grader:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+        purchasePrice:
+          type: number
+          minimum: 0
+        marketValue:
+          type: number
+          minimum: 0
+        askingPrice:
+          type: number
+          minimum: 0
+        soldPrice:
+          type: number
+          minimum: 0
+        soldDate:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [collection, for_sale, sold, wishlist, trade_binder, grading_pile]
+        location:
+          type: string
+        notes:
+          type: string
+        purchaseDate:
+          type: string
+          format: date
+        purchaseSource:
+          type: string
+        tradeNotes:
+          type: string
+        coverImagePath:
+          type: string
+
+    # Sealed Products
+    SealedProduct:
+      type: object
+      required: [id, name, productType, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        productType:
+          type: string
+          enum: [ETB, booster_box, booster_pack, tin, binder, case, other]
+        set:
+          type: [string, 'null']
+        quantity:
+          type: integer
+        condition:
+          type: [string, 'null']
+        purchasePrice:
+          type: [number, 'null']
+        marketValue:
+          type: [number, 'null']
+        askingPrice:
+          type: [number, 'null']
+        soldPrice:
+          type: [number, 'null']
+        soldDate:
+          type: [string, 'null']
+          format: date
+        status:
+          type: string
+          enum: [collection, for_sale, sold, wishlist, trade_binder, grading_pile]
+        purchaseDate:
+          type: [string, 'null']
+          format: date
+        purchaseSource:
+          type: [string, 'null']
+        tradeNotes:
+          type: [string, 'null']
+        location:
+          type: [string, 'null']
+        notes:
+          type: [string, 'null']
+        coverImagePath:
+          type: [string, 'null']
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        deletedAt:
+          type: [string, 'null']
+          format: date-time
+
+    SealedProductDetail:
+      allOf:
+        - $ref: '#/components/schemas/SealedProduct'
+        - type: object
+          properties:
+            images:
+              type: array
+              items:
+                $ref: '#/components/schemas/ItemImage'
+
+    SealedProductInput:
+      type: object
+      required: [name, productType]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        productType:
+          type: string
+          enum: [ETB, booster_box, booster_pack, tin, binder, case, other]
+        set:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+        condition:
+          type: string
+        purchasePrice:
+          type: number
+          minimum: 0
+        marketValue:
+          type: number
+          minimum: 0
+        askingPrice:
+          type: number
+          minimum: 0
+        status:
+          type: string
+          enum: [collection, for_sale, sold, wishlist, trade_binder, grading_pile]
+        location:
+          type: string
+        notes:
+          type: string
+        purchaseDate:
+          type: string
+          format: date
+        purchaseSource:
+          type: string
+        tradeNotes:
+          type: string
+    SealedProductUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        productType:
+          type: string
+          enum: [ETB, booster_box, booster_pack, tin, binder, case, other]
+        set:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+        condition:
+          type: string
+        purchasePrice:
+          type: number
+          minimum: 0
+        marketValue:
+          type: number
+          minimum: 0
+        askingPrice:
+          type: number
+          minimum: 0
+        soldPrice:
+          type: number
+          minimum: 0
+        soldDate:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [collection, for_sale, sold, wishlist, trade_binder, grading_pile]
+        location:
+          type: string
+        notes:
+          type: string
+        purchaseDate:
+          type: string
+          format: date
+        purchaseSource:
+          type: string
+        tradeNotes:
+          type: string
+        coverImagePath:
+          type: string
+
+    # Dashboard
+    DashboardSummary:
+      type: object
+      required: [totalCards, totalSealedProducts, totalItems, totalCost, totalMarketValue, estimatedProfit, soldCount, soldRevenue, forSaleCount, collectionCount, tradeBinderCount, gradingPileCount, wishlistCount, totalExpenses, netProfit, collectionValue, forSaleValue, tradeBinderValue, gradingPileValue, wishlistValue, realizedProfit, unrealizedProfit]
+      properties:
+        totalCards:
+          type: integer
+        totalSealedProducts:
+          type: integer
+        totalItems:
+          type: integer
+        totalCost:
+          type: number
+        totalMarketValue:
+          type: number
+        estimatedProfit:
+          type: number
+        soldCount:
+          type: integer
+        soldRevenue:
+          type: number
+        forSaleCount:
+          type: integer
+        collectionCount:
+          type: integer
+        totalExpenses:
+          type: number
+        netProfit:
+          type: number
+        collectionValue:
+          type: number
+        forSaleValue:
+          type: number
+        cardCollectionValue:
+          type: number
+        sealedCollectionValue:
+          type: number
+        soldProfit:
+          type: number
+        realizedProfit:
+          type: number
+        unrealizedProfit:
+          type: number
+        tradeBinderCount:
+          type: integer
+        gradingPileCount:
+          type: integer
+        wishlistCount:
+          type: integer
+        tradeBinderValue:
+          type: number
+        gradingPileValue:
+          type: number
+        wishlistValue:
+          type: number
+
+    CollectionValueSnapshot:
+      type: object
+      required: [id, snapshotDate, totalValue, cardsValue, sealedValue, itemCount, cardCount, sealedCount]
+      properties:
+        id:
+          type: integer
+        snapshotDate:
+          type: string
+          format: date
+        totalValue:
+          type: number
+        cardsValue:
+          type: number
+        sealedValue:
+          type: number
+        itemCount:
+          type: integer
+        cardCount:
+          type: integer
+        sealedCount:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+
+    MarketSummary:
+      type: object
+      required: [currentValue, cardsValue, sealedValue, itemCount]
+      properties:
+        currentValue:
+          type: number
+        cardsValue:
+          type: number
+        sealedValue:
+          type: number
+        itemCount:
+          type: integer
+        change1d:
+          type: [number, 'null']
+        change1dPct:
+          type: [number, 'null']
+        change7d:
+          type: [number, 'null']
+        change7dPct:
+          type: [number, 'null']
+        change30d:
+          type: [number, 'null']
+        change30dPct:
+          type: [number, 'null']
+        lastSnapshotDate:
+          type: [string, 'null']
+          format: date
+        totalCostBasis:
+          type: number
+        unrealizedGain:
+          type: number
+        unrealizedGainPct:
+          type: [number, 'null']
+
+    TopItem:
+      type: object
+      required: [id, itemType, name, marketValue]
+      properties:
+        id:
+          type: integer
+        itemType:
+          type: string
+          enum: [card, sealed_product]
+        name:
+          type: string
+        set:
+          type: [string, 'null']
+        cardNumber:
+          type: [string, 'null']
+        rarity:
+          type: [string, 'null']
+        marketValue:
+          type: number
+        purchasePrice:
+          type: [number, 'null']
+        gain:
+          type: [number, 'null']
+        gainPct:
+          type: [number, 'null']
+        coverImagePath:
+          type: [string, 'null']
+        status:
+          type: string
+        quantity:
+          type: integer
+
+    PriceMover:
+      type: object
+      required: [id, itemType, name, currentValue, previousValue, change, changePct]
+      properties:
+        id:
+          type: integer
+        itemType:
+          type: string
+          enum: [card, sealed_product]
+        name:
+          type: string
+        set:
+          type: [string, 'null']
+        currentValue:
+          type: number
+        previousValue:
+          type: number
+        change:
+          type: number
+        changePct:
+          type: number
+        coverImagePath:
+          type: [string, 'null']
+
+    MarketMovers:
+      type: object
+      required: [gainers, losers, windowDays]
+      properties:
+        gainers:
+          type: array
+          items:
+            $ref: "#/components/schemas/PriceMover"
+        losers:
+          type: array
+          items:
+            $ref: "#/components/schemas/PriceMover"
+        windowDays:
+          type: integer
+
+    MarketRefreshResult:
+      type: object
+      required: [updated, skipped, errors, snapshotCreated]
+      properties:
+        updated:
+          type: integer
+        skipped:
+          type: integer
+        errors:
+          type: integer
+        snapshotCreated:
+          type: boolean
+        message:
+          type: string
+
+    PriceHistoryEntry:
+      type: object
+      required: [id, snapshotDate, marketValue, source]
+      properties:
+        id:
+          type: integer
+        snapshotDate:
+          type: string
+          format: date
+        marketValue:
+          type: number
+        source:
+          type: string
+
+
+    SetPerformanceRow:
+      type: object
+      required: [set, cardCount, sealedCount, totalCost, totalMarketValue, totalGain, gainPct]
+      properties:
+        set:
+          type: string
+        cardCount:
+          type: integer
+        sealedCount:
+          type: integer
+        totalQuantity:
+          type: integer
+        totalCost:
+          type: number
+        totalMarketValue:
+          type: number
+        totalGain:
+          type: number
+        gainPct:
+          type: [number, 'null']
+
+    AcquisitionMonth:
+      type: object
+      required: [year, month, label, cardCount, sealedCount, totalCost]
+      properties:
+        year:
+          type: integer
+        month:
+          type: integer
+        label:
+          type: string
+        cardCount:
+          type: integer
+        sealedCount:
+          type: integer
+        totalCost:
+          type: number
+        totalMarketValue:
+          type: number
+
+    SoldItem:
+      type: object
+      required: [id, itemType, name, set, soldPrice, purchasePrice, profit, profitPct]
+      properties:
+        id:
+          type: integer
+        itemType:
+          type: string
+        name:
+          type: string
+        set:
+          type: [string, 'null']
+        soldPrice:
+          type: number
+        purchasePrice:
+          type: number
+        profit:
+          type: number
+        profitPct:
+          type: number
+        soldDate:
+          type: [string, 'null']
+
+    SoldMonth:
+      type: object
+      required: [year, month, label, count, revenue, cost, profit]
+      properties:
+        year:
+          type: integer
+        month:
+          type: integer
+        label:
+          type: string
+        count:
+          type: integer
+        revenue:
+          type: number
+        cost:
+          type: number
+        profit:
+          type: number
+
+    SoldPerformanceResult:
+      type: object
+      required: [byMonth, topSellers, totalRevenue, totalCost, totalProfit, totalSold]
+      properties:
+        byMonth:
+          type: array
+          items:
+            $ref: "#/components/schemas/SoldMonth"
+        topSellers:
+          type: array
+          items:
+            $ref: "#/components/schemas/SoldItem"
+        totalRevenue:
+          type: number
+        totalCost:
+          type: number
+        totalProfit:
+          type: number
+        totalSold:
+          type: integer
+
+    ValueTierRow:
+      type: object
+      required: [tier, label, count, totalValue]
+      properties:
+        tier:
+          type: string
+        label:
+          type: string
+        count:
+          type: integer
+        totalValue:
+          type: number
+
+    InventoryBreakdown:
+      type: object
+      required: [graded, raw, byValueTier, byGrade]
+      properties:
+        graded:
+          type: object
+          required: [count, totalValue]
+          properties:
+            count:
+              type: integer
+            totalValue:
+              type: number
+        raw:
+          type: object
+          required: [count, totalValue]
+          properties:
+            count:
+              type: integer
+            totalValue:
+              type: number
+        byValueTier:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValueTierRow"
+        byGrade:
+          type: array
+          items:
+            type: object
+            required: [grade, count, totalValue]
+            properties:
+              grade:
+                type: string
+              count:
+                type: integer
+              totalValue:
+                type: number
+
+    WishlistEntry:
+      type: object
+      required: [id, itemType, name, set]
+      properties:
+        id:
+          type: integer
+        itemType:
+          type: string
+        name:
+          type: string
+        set:
+          type: [string, 'null']
+        purchasePrice:
+          type: [number, 'null']
+        notes:
+          type: [string, 'null']
+
+    WishlistAnalytics:
+      type: object
+      required: [cardCount, sealedCount, totalItems, estimatedCost, items]
+      properties:
+        cardCount:
+          type: integer
+        sealedCount:
+          type: integer
+        totalItems:
+          type: integer
+        estimatedCost:
+          type: number
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WishlistEntry"
+
+
+    RecentItem:
+      type: object
+      required: [id, name, type, status, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+          enum: [card, sealed_product]
+        status:
+          type: string
+        coverImagePath:
+          type: [string, 'null']
+        createdAt:
+          type: string
+          format: date-time
+
+    RecentActivity:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecentItem'
+
+    # Listing
+    ListingRequest:
+      type: object
+      required: [itemType, itemId]
+      properties:
+        itemType:
+          type: string
+          enum: [card, sealed_product]
+        itemId:
+          type: integer
+        includeImages:
+          type: boolean
+    ListingResult:
+      type: object
+      required: [title, description]
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        price:
+          type: [number, 'null']
+
+    # Expenses
+    Expense:
+      type: object
+      required: [id, category, description, amount, date, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        category:
+          type: string
+          enum: [supplies, shipping, platform_fees, gas, packaging, grading, purchase, other]
+        description:
+          type: string
+        amount:
+          type: number
+        date:
+          type: string
+          format: date
+        notes:
+          type: [string, 'null']
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ExpenseInput:
+      type: object
+      required: [category, description, amount, date]
+      properties:
+        category:
+          type: string
+          enum: [supplies, shipping, platform_fees, gas, packaging, grading, purchase, other]
+          default: other
+        description:
+          type: string
+          minLength: 1
+        amount:
+          type: number
+          minimum: 0
+        date:
+          type: string
+          format: date
+        notes:
+          type: string
+
+    ExpenseUpdate:
+      type: object
+      properties:
+        category:
+          type: string
+          enum: [supplies, shipping, platform_fees, gas, packaging, grading, purchase, other]
+        description:
+          type: string
+          minLength: 1
+        amount:
+          type: number
+          minimum: 0
+        date:
+          type: string
+          format: date
+        notes:
+          type: string
+
+    # Customers
+    Customer:
+      type: object
+      required: [id, name, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        phone:
+          type: [string, 'null']
+        email:
+          type: [string, 'null']
+        preferences:
+          type: [string, 'null']
+        notes:
+          type: [string, 'null']
+        followUpDate:
+          type: [string, 'null']
+          format: date
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CustomerInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        phone:
+          type: string
+        email:
+          type: string
+        preferences:
+          type: string
+        notes:
+          type: string
+        followUpDate:
+          type: string
+          format: date
+
+    CustomerUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        phone:
+          type: string
+        email:
+          type: string
+        preferences:
+          type: string
+        notes:
+          type: string
+        followUpDate:
+          type: string
+          format: date
+
+    # Pickups
+    Pickup:
+      type: object
+      required: [id, buyerName, status, createdAt, updatedAt]
+      properties:
+        id:
+          type: integer
+        buyerName:
+          type: string
+        customerId:
+          type: [integer, 'null']
+        location:
+          type: [string, 'null']
+        meetingDatetime:
+          type: [string, 'null']
+          format: date-time
+        itemDescription:
+          type: [string, 'null']
+        amountDue:
+          type: [number, 'null']
+        amountPaid:
+          type: [number, 'null']
+        status:
+          type: string
+          enum: [scheduled, completed, cancelled, no_show]
+        notes:
+          type: [string, 'null']
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PickupInput:
+      type: object
+      required: [buyerName]
+      properties:
+        buyerName:
+          type: string
+          minLength: 1
+        customerId:
+          type: integer
+        location:
+          type: string
+        meetingDatetime:
+          type: string
+          format: date-time
+        itemDescription:
+          type: string
+        amountDue:
+          type: number
+          minimum: 0
+        amountPaid:
+          type: number
+          minimum: 0
+        status:
+          type: string
+          enum: [scheduled, completed, cancelled, no_show]
+          default: scheduled
+        notes:
+          type: string
+
+    PickupUpdate:
+      type: object
+      properties:
+        buyerName:
+          type: string
+          minLength: 1
+        customerId:
+          type: integer
+        location:
+          type: string
+        meetingDatetime:
+          type: string
+          format: date-time
+        itemDescription:
+          type: string
+        amountDue:
+          type: number
+          minimum: 0
+        amountPaid:
+          type: number
+          minimum: 0
+        status:
+          type: string
+          enum: [scheduled, completed, cancelled, no_show]
+        notes:
+          type: string
+
+    TrashItem:
+      type: object
+      required: [id, name, type, deletedAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        type:
+          type: string
+          enum: [card, sealed_product]
+        status:
+          type: string
+        coverImagePath:
+          type: [string, 'null']
+        deletedAt:
+          type: string
+          format: date-time
+
+    BackupCard:
+      allOf:
+        - $ref: '#/components/schemas/Card'
+        - type: object
+          properties:
+            deletedAt:
+              type: [string, 'null']
+              format: date-time
+            images:
+              type: array
+              items:
+                $ref: '#/components/schemas/ItemImage'
+
+    BackupSealedProduct:
+      allOf:
+        - $ref: '#/components/schemas/SealedProduct'
+        - type: object
+          properties:
+            deletedAt:
+              type: [string, 'null']
+              format: date-time
+            images:
+              type: array
+              items:
+                $ref: '#/components/schemas/ItemImage'
+
+    BackupSnapshot:
+      type: object
+      required: [version, exportedAt, cards, sealedProducts]
+      properties:
+        version:
+          type: string
+        exportedAt:
+          type: string
+          format: date-time
+        ownerId:
+          type: [string, 'null']
+        storageNote:
+          type: string
+        cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/BackupCard'
+        sealedProducts:
+          type: array
+          items:
+            $ref: '#/components/schemas/BackupSealedProduct'
+
+    RestoreResult:
+      type: object
+      required: [cards, sealedProducts, images, sequencesReset]
+      properties:
+        cards:
+          type: integer
+          description: Number of cards upserted.
+        sealedProducts:
+          type: integer
+          description: Number of sealed products upserted.
+        images:
+          type: integer
+          description: Number of images upserted.
+        sequencesReset:
+          type: boolean
+          description: Whether auto-increment sequences were reset.
+
+    # Collection Intelligence
+    DuplicateGroup:
+      type: object
+      required: [name, set, rowCount, totalQuantity, ids]
+      properties:
+        name:
+          type: string
+        set:
+          type: string
+        rowCount:
+          type: integer
+          description: Number of separate DB rows with this name+set
+        totalQuantity:
+          type: integer
+          description: Sum of quantity across all duplicate rows
+        ids:
+          type: array
+          items:
+            type: integer
+        statuses:
+          type: array
+          items:
+            type: string
+
+    SetTotal:
+      type: object
+      required: [id, setName, totalCards, updatedAt]
+      properties:
+        id:
+          type: integer
+        setName:
+          type: string
+        totalCards:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+
+    CollectionStatsBySet:
+      type: object
+      required: [set, cardRows, totalOwned, uniqueCardNumbers]
+      properties:
+        set:
+          type: string
+        cardRows:
+          type: integer
+        totalOwned:
+          type: integer
+        uniqueCardNumbers:
+          type: integer
+        setTotal:
+          type: [integer, 'null']
+        completion:
+          type: [number, 'null']
+          description: Completion percentage (0-100), null if setTotal not defined
+
+    CollectionStatsBucket:
+      type: object
+      required: [count]
+      properties:
+        count:
+          type: integer
+
+    CollectionStats:
+      type: object
+      required: [cards, sealed]
+      properties:
+        cards:
+          type: object
+          required: [total, wishlist, byStatus, bySet, byRarity, byCondition]
+          properties:
+            total:
+              type: integer
+            wishlist:
+              type: integer
+            byStatus:
+              type: array
+              items:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  count:
+                    type: integer
+            bySet:
+              type: array
+              items:
+                $ref: '#/components/schemas/CollectionStatsBySet'
+            byRarity:
+              type: array
+              items:
+                type: object
+                properties:
+                  rarity:
+                    type: [string, 'null']
+                  count:
+                    type: integer
+            byCondition:
+              type: array
+              items:
+                type: object
+                properties:
+                  condition:
+                    type: [string, 'null']
+                  count:
+                    type: integer
+        sealed:
+          type: object
+          required: [total, wishlist, byStatus, byProductType, byCondition]
+          properties:
+            total:
+              type: integer
+            wishlist:
+              type: integer
+            byStatus:
+              type: array
+              items:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  count:
+                    type: integer
+            byProductType:
+              type: array
+              items:
+                type: object
+                properties:
+                  productType:
+                    type: string
+                  count:
+                    type: integer
+            byCondition:
+              type: array
+              items:
+                type: object
+                properties:
+                  condition:
+                    type: [string, 'null']
+                  count:
+                    type: integer

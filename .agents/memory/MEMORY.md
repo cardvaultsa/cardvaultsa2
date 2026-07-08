@@ -1,0 +1,2 @@
+- [Phase 7 PWA setup](phase7-pwa.md) — vite-plugin-pwa devOptions.enabled=false; SW only activates in prod builds; NetworkFirst for /api/(not auth), CacheFirst for /api/storage.
+- [Phase 7 mobile patterns](phase7-mobile.md) — bottom-nav (lg:hidden, 4 primary items + More→sidebar); backup reminder has 7-day first-seen grace period + daily cooldown.
