@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "pnpm install --frozen-lockfile",
-  "buildCommand": "pnpm run build",
+  "buildCommand": "pnpm run typecheck && pnpm --filter @workspace/api-server build && pnpm --filter @workspace/pokedex-vault build",
   "outputDirectory": "artifacts/pokedex-vault/dist/public",
   "rewrites": [
     {
