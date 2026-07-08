@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { Readable } from "stream";
+import { Readable } from "node:stream";
+import type { ReadableStream } from "node:stream/web";
 import {
   RequestUploadUrlBody,
   RequestUploadUrlResponse,
@@ -8,6 +9,8 @@ import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage"
 
 const router: IRouter = Router();
 const objectStorageService = new ObjectStorageService();
+
+type WildcardParam = string | string[] | undefined;
 
 // Only image uploads are permitted. Validated against the client-declared
 // contentType/size before a presigned URL is ever issued.
@@ -20,6 +23,29 @@ const ALLOWED_UPLOAD_MIME_TYPES = new Set([
   "image/heif",
 ]);
 const MAX_UPLOAD_SIZE_BYTES = 15 * 1024 * 1024; // 15 MB
+
+function getWildcardPath(raw: WildcardParam): string | null {
+  const path = (Array.isArray(raw) ? raw.join("/") : raw ?? "").trim();
+  return path.length > 0 ? path : null;
+}
+
+function sendStorageResponse(
+  storageResponse: globalThis.Response,
+  res: Response,
+): void {
+  res.status(storageResponse.status);
+  storageResponse.headers.forEach((value, key) => res.setHeader(key, value));
+
+  if (!storageResponse.body) {
+    res.end();
+    return;
+  }
+
+  const nodeStream = Readable.fromWeb(
+    storageResponse.body as ReadableStream<Uint8Array>,
+  );
+  nodeStream.pipe(res);
+}
 
 /**
  * POST /storage/uploads/request-url
@@ -86,8 +112,12 @@ router.post("/storage/uploads/request-url", async (req: Request, res: Response) 
  */
 router.get("/storage/public-objects/*filePath", async (req: Request, res: Response) => {
   try {
-    const raw = req.params.filePath;
-    const filePath = Array.isArray(raw) ? raw.join("/") : raw;
+    const filePath = getWildcardPath(req.params.filePath);
+    if (!filePath) {
+      res.status(400).json({ error: "Missing file path" });
+      return;
+    }
+
     const file = await objectStorageService.searchPublicObject(filePath);
     if (!file) {
       res.status(404).json({ error: "File not found" });
@@ -95,16 +125,7 @@ router.get("/storage/public-objects/*filePath", async (req: Request, res: Respon
     }
 
     const response = await objectStorageService.downloadObject(file);
-
-    res.status(response.status);
-    response.headers.forEach((value, key) => res.setHeader(key, value));
-
-    if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-      nodeStream.pipe(res);
-    } else {
-      res.end();
-    }
+    sendStorageResponse(response, res);
   } catch (error) {
     req.log.error({ err: error }, "Error serving public object");
     res.status(500).json({ error: "Failed to serve public object" });
@@ -128,22 +149,16 @@ router.get("/storage/objects/*path", async (req: Request, res: Response) => {
       return;
     }
 
-    const raw = req.params.path;
-    const wildcardPath = Array.isArray(raw) ? raw.join("/") : raw;
+    const wildcardPath = getWildcardPath(req.params.path);
+    if (!wildcardPath) {
+      res.status(400).json({ error: "Missing object path" });
+      return;
+    }
+
     const objectPath = `/objects/${wildcardPath}`;
     const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
-
     const response = await objectStorageService.downloadObject(objectFile);
-
-    res.status(response.status);
-    response.headers.forEach((value, key) => res.setHeader(key, value));
-
-    if (response.body) {
-      const nodeStream = Readable.fromWeb(response.body as ReadableStream<Uint8Array>);
-      nodeStream.pipe(res);
-    } else {
-      res.end();
-    }
+    sendStorageResponse(response, res);
   } catch (error) {
     if (error instanceof ObjectNotFoundError) {
       req.log.warn({ err: error }, "Object not found");
