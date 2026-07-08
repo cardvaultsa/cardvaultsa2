@@ -3,6 +3,7 @@ import express, {
   type Request,
   type Response,
   type NextFunction,
+  type RequestHandler,
 } from "express";
 import cors from "cors";
 import { rateLimit } from "express-rate-limit";
@@ -13,7 +14,10 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { authMiddleware } from "./middlewares/authMiddleware";
 
-const pinoHttp = pinoHttpModule;
+type MiddlewareFactory = (options?: Record<string, unknown>) => RequestHandler;
+
+const pinoHttp = pinoHttpModule as unknown as MiddlewareFactory;
+const helmetMiddleware = helmet as unknown as MiddlewareFactory;
 const app: Express = express();
 
 
@@ -45,7 +49,7 @@ app.use(
 // images streamed from /api/storage/* can be displayed by the frontend and the
 // Replit preview iframe.
 app.use(
-  helmet({
+  helmetMiddleware({
     crossOriginResourcePolicy: { policy: "cross-origin" },
   }),
 );
