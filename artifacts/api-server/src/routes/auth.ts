@@ -10,6 +10,7 @@ import {
   deleteSession,
   getAllowedOwnerUserId,
   getAuthConfigError,
+  isPasswordAuthEnabled,
   SESSION_COOKIE,
   SESSION_TTL,
   ISSUER_URL,
@@ -150,7 +151,7 @@ router.get("/auth/user", (req: Request, res: Response) => {
 router.get("/login", async (req: Request, res: Response) => {
   const returnTo = getSafeReturnTo(req.query.returnTo);
   const passwordUserId = getPasswordAuthUserId();
-  if (passwordUserId && !process.env.REPL_ID) {
+  if (passwordUserId) {
     res.status(200).type("html").send(renderPasswordLoginPage(returnTo));
     return;
   }
@@ -329,7 +330,7 @@ router.get("/callback", async (req: Request, res: Response) => {
 });
 
 router.get("/logout", async (req: Request, res: Response) => {
-  if (!process.env.REPL_ID) {
+  if (isPasswordAuthEnabled()) {
     const sid = getSessionId(req);
     const userId = req.user?.id ?? null;
     await clearSession(res, sid);
