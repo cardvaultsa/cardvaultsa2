@@ -16,9 +16,21 @@ if (!connectionString) {
   );
 }
 
-export const pool = new Pool(
-  connectionString ? { connectionString } : undefined,
-);
+function createPool(): pg.Pool {
+  try {
+    return new Pool(
+      connectionString ? { connectionString } : undefined,
+    );
+  } catch (error) {
+    console.error(
+      "Invalid database connection string; database-backed routes will fail until it is fixed.",
+      error,
+    );
+    return new Pool();
+  }
+}
+
+export const pool = createPool();
 export const db = drizzle(pool, { schema });
 
 export * from "./schema";
