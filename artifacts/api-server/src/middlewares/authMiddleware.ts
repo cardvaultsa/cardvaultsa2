@@ -3,6 +3,7 @@ import { type Request, type Response, type NextFunction } from "express";
 import {
   type AuthUser,
   clearSession,
+  getAllowedOwnerUserId,
   getOidcConfig,
   getSessionId,
   getSession,
@@ -88,11 +89,11 @@ export async function authMiddleware(
   // When it is unset we fail CLOSED in production (deny everyone) so a missing
   // config can never silently reopen the app to any Replit user; in development
   // we fail open so the app is never accidentally locked out while iterating.
-  const allowedUserId = process.env.ALLOWED_USER_ID;
+  const allowedUserId = getAllowedOwnerUserId();
   if (!allowedUserId) {
     if (process.env.NODE_ENV === "production") {
       req.log.error(
-        "ALLOWED_USER_ID is not set — denying authentication in production",
+        "ALLOWED_USER_ID is not set - denying authentication in production",
       );
       next();
       return;
