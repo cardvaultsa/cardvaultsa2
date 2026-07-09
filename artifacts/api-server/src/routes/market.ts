@@ -43,7 +43,7 @@ async function fetchTcgPrice(name: string, set: string): Promise<number | null> 
     const apiResponse = (await fetch(url, {
       signal: AbortSignal.timeout(8000),
       headers: { "User-Agent": "PokéVault/1.0" },
-    })) as FetchJsonResponse;
+    })) as unknown as FetchJsonResponse;
     if (!apiResponse.ok) return null;
     const data = (await apiResponse.json()) as TcgApiResponse;
     const cards = data.data ?? [];
