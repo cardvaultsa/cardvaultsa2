@@ -20,6 +20,12 @@ export interface ObjectDownloadResponse {
   body: ReadableStream<Uint8Array> | null;
 }
 
+type JsonFetchResponse = {
+  ok: boolean;
+  status: number;
+  json(): Promise<unknown>;
+};
+
 export const objectStorageClient = new Storage({
   credentials: {
     audience: "replit",
@@ -277,7 +283,7 @@ async function signObjectURL({
     method,
     expires_at: new Date(Date.now() + ttlSec * 1000).toISOString(),
   };
-  const response = await fetch(
+  const response = (await fetch(
     `${REPLIT_SIDECAR_ENDPOINT}/object-storage/signed-object-url`,
     {
       method: "POST",
@@ -287,7 +293,7 @@ async function signObjectURL({
       body: JSON.stringify(request),
       signal: AbortSignal.timeout(30_000),
     },
-  );
+  )) as unknown as JsonFetchResponse;
   if (!response.ok) {
     throw new Error(
       `Failed to sign object URL, errorcode: ${response.status}, ` +
