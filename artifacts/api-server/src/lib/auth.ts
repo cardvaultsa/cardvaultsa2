@@ -25,11 +25,35 @@ export interface SessionData {
 
 let oidcConfig: client.Configuration | null = null;
 
+export function getPasswordAuthUserId(): string | null {
+  if (!process.env.ADMIN_PASSWORD) {
+    return null;
+  }
+  return process.env.ADMIN_USER_ID ?? process.env.ALLOWED_USER_ID ?? "owner";
+}
+
+export function getAllowedOwnerUserId(): string | null {
+  return process.env.ALLOWED_USER_ID ?? getPasswordAuthUserId();
+}
+
+export function getAuthConfigError(): string | null {
+  if (!process.env.REPL_ID && !process.env.ADMIN_PASSWORD) {
+    return "Set REPL_ID for Replit OIDC login, or set ADMIN_PASSWORD for Vercel password login.";
+  }
+  return null;
+}
+
 export async function getOidcConfig(): Promise<client.Configuration> {
   if (!oidcConfig) {
+    const replId = process.env.REPL_ID;
+    if (!replId) {
+      throw new Error(
+        "REPL_ID must be set for Replit OIDC login. Set ADMIN_PASSWORD to use Vercel password login instead.",
+      );
+    }
     oidcConfig = await client.discovery(
       new URL(ISSUER_URL),
-      process.env.REPL_ID!,
+      replId,
     );
   }
   return oidcConfig;
