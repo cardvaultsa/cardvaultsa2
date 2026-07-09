@@ -25,8 +25,12 @@ export interface SessionData {
 
 let oidcConfig: client.Configuration | null = null;
 
+export function isPasswordAuthEnabled(): boolean {
+  return !!process.env.ADMIN_PASSWORD && process.env.AUTH_MODE !== "oidc";
+}
+
 export function getPasswordAuthUserId(): string | null {
-  if (!process.env.ADMIN_PASSWORD) {
+  if (!isPasswordAuthEnabled()) {
     return null;
   }
   return process.env.ADMIN_USER_ID ?? process.env.ALLOWED_USER_ID ?? "owner";
@@ -37,7 +41,7 @@ export function getAllowedOwnerUserId(): string | null {
 }
 
 export function getAuthConfigError(): string | null {
-  if (!process.env.REPL_ID && !process.env.ADMIN_PASSWORD) {
+  if (!process.env.REPL_ID && !isPasswordAuthEnabled()) {
     return "Set REPL_ID for Replit OIDC login, or set ADMIN_PASSWORD for Vercel password login.";
   }
   return null;
