@@ -8,9 +8,12 @@ import {
   getSessionId,
   createSession,
   deleteSession,
+  getAllowedOwnerUserId,
+  getAuthConfigError,
   SESSION_COOKIE,
   SESSION_TTL,
   ISSUER_URL,
+  getPasswordAuthUserId,
   type SessionData,
 } from "../lib/auth";
 import { recordSecurityAudit } from "../lib/auditLog";
@@ -53,6 +56,60 @@ function getSafeReturnTo(value: unknown): string {
   return value;
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function renderPasswordLoginPage(returnTo: string, error?: string): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>PokeVault Login</title>
+    <style>
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: system-ui, sans-serif; background: #090d14; color: #eef4f1; }
+      main { width: min(360px, calc(100vw - 40px)); }
+      h1 { color: #34d399; font-size: 42px; margin: 0 0 8px; }
+      p { color: #94a3b8; line-height: 1.5; }
+      form { display: grid; gap: 14px; margin-top: 28px; }
+      input, button { border: 0; border-radius: 10px; font: inherit; padding: 14px 16px; }
+      input { background: #111827; color: #fff; outline: 1px solid #253041; }
+      button { background: #34d399; color: #04130e; font-weight: 700; }
+      .error { color: #f87171; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>PokeVault</h1>
+      <p>Enter the admin password configured in Vercel.</p>
+      ${error ? `<p class="error">${escapeHtml(error)}</p>` : ""}
+      <form method="post" action="/api/login">
+        <input type="hidden" name="returnTo" value="${escapeHtml(returnTo)}" />
+        <input type="password" name="password" autocomplete="current-password" placeholder="Admin password" required autofocus />
+        <button type="submit">Sign in</button>
+      </form>
+    </main>
+  </body>
+</html>`;
+}
+
+function renderAuthConfigPage(message: string): string {
+  return `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>Auth not configured</title></head>
+  <body style="font-family: system-ui, sans-serif; padding: 32px;">
+    <h1>Authentication is not configured</h1>
+    <p>${escapeHtml(message)}</p>
+  </body>
+</html>`;
+}
+
 async function upsertUser(claims: Record<string, unknown>) {
   const userData = {
     id: claims.sub as string,
@@ -91,10 +148,21 @@ router.get("/auth/user", (req: Request, res: Response) => {
 });
 
 router.get("/login", async (req: Request, res: Response) => {
+  const returnTo = getSafeReturnTo(req.query.returnTo);
+  const passwordUserId = getPasswordAuthUserId();
+  if (passwordUserId && !process.env.REPL_ID) {
+    res.status(200).type("html").send(renderPasswordLoginPage(returnTo));
+    return;
+  }
+
+  const authConfigError = getAuthConfigError();
+  if (authConfigError) {
+    res.status(503).type("html").send(renderAuthConfigPage(authConfigError));
+    return;
+  }
+
   const config = await getOidcConfig();
   const callbackUrl = `${getOrigin(req)}/api/callback`;
-
-  const returnTo = getSafeReturnTo(req.query.returnTo);
 
   const state = oidc.randomState();
   const nonce = oidc.randomNonce();
@@ -117,6 +185,51 @@ router.get("/login", async (req: Request, res: Response) => {
   setOidcCookie(res, "return_to", returnTo);
 
   res.redirect(redirectTo.href);
+});
+
+router.post("/login", async (req: Request, res: Response) => {
+  const passwordUserId = getPasswordAuthUserId();
+  if (!passwordUserId) {
+    res.status(404).json({ error: "Password login is not enabled" });
+    return;
+  }
+
+  const returnTo = getSafeReturnTo(req.body?.returnTo);
+  if (req.body?.password !== process.env.ADMIN_PASSWORD) {
+    res.status(401).type("html").send(
+      renderPasswordLoginPage(returnTo, "Incorrect password"),
+    );
+    return;
+  }
+
+  const dbUser = await upsertUser({
+    sub: passwordUserId,
+    email: process.env.ADMIN_EMAIL ?? null,
+    first_name: "Owner",
+    last_name: null,
+    profile_image_url: null,
+  });
+
+  const sessionData: SessionData = {
+    user: {
+      id: dbUser.id,
+      email: dbUser.email ?? null,
+      firstName: dbUser.firstName ?? null,
+      lastName: dbUser.lastName ?? null,
+      profileImageUrl: dbUser.profileImageUrl ?? null,
+    },
+    access_token: "password",
+    expires_at: Math.floor((Date.now() + SESSION_TTL) / 1000),
+  };
+
+  const sid = await createSession(sessionData);
+  setSessionCookie(res, sid);
+  recordSecurityAudit(req, {
+    event: "owner_sign_in",
+    result: "success",
+    userId: dbUser.id,
+  });
+  res.redirect(returnTo);
 });
 
 // Query params are not validated because the OIDC provider may include
@@ -166,7 +279,7 @@ router.get("/callback", async (req: Request, res: Response) => {
 
   // Owner allowlist: reject non-owner logins before creating a session or
   // writing to the users table, so a rejected account leaves no trace.
-  const allowedUserId = process.env.ALLOWED_USER_ID;
+  const allowedUserId = getAllowedOwnerUserId();
   if (allowedUserId && (claims.sub as string) !== allowedUserId) {
     recordSecurityAudit(req, {
       event: "blocked_sign_in",
@@ -207,6 +320,21 @@ router.get("/callback", async (req: Request, res: Response) => {
 });
 
 router.get("/logout", async (req: Request, res: Response) => {
+  if (!process.env.REPL_ID) {
+    const sid = getSessionId(req);
+    const userId = req.user?.id ?? null;
+    await clearSession(res, sid);
+    if (userId) {
+      recordSecurityAudit(req, {
+        event: "owner_sign_out",
+        result: "success",
+        userId,
+      });
+    }
+    res.redirect("/");
+    return;
+  }
+
   const config = await getOidcConfig();
   const origin = getOrigin(req);
 
@@ -214,7 +342,7 @@ router.get("/logout", async (req: Request, res: Response) => {
   const userId = req.user?.id ?? null;
   await clearSession(res, sid);
 
-  // Only record a sign-out when an owner was actually signed in — an anonymous
+  // Only record a sign-out when an owner was actually signed in - an anonymous
   // hit to /logout is a no-op and shouldn't pollute the audit trail with a
   // "success" owner event that has no owner.
   if (userId) {
