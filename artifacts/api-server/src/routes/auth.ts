@@ -202,34 +202,43 @@ router.post("/login", async (req: Request, res: Response) => {
     return;
   }
 
-  const dbUser = await upsertUser({
-    sub: passwordUserId,
-    email: process.env.ADMIN_EMAIL ?? null,
-    first_name: "Owner",
-    last_name: null,
-    profile_image_url: null,
-  });
+  try {
+    const dbUser = await upsertUser({
+      sub: passwordUserId,
+      email: process.env.ADMIN_EMAIL ?? null,
+      first_name: "Owner",
+      last_name: null,
+      profile_image_url: null,
+    });
 
-  const sessionData: SessionData = {
-    user: {
-      id: dbUser.id,
-      email: dbUser.email ?? null,
-      firstName: dbUser.firstName ?? null,
-      lastName: dbUser.lastName ?? null,
-      profileImageUrl: dbUser.profileImageUrl ?? null,
-    },
-    access_token: "password",
-    expires_at: Math.floor((Date.now() + SESSION_TTL) / 1000),
-  };
+    const sessionData: SessionData = {
+      user: {
+        id: dbUser.id,
+        email: dbUser.email ?? null,
+        firstName: dbUser.firstName ?? null,
+        lastName: dbUser.lastName ?? null,
+        profileImageUrl: dbUser.profileImageUrl ?? null,
+      },
+      access_token: "password",
+      expires_at: Math.floor((Date.now() + SESSION_TTL) / 1000),
+    };
 
-  const sid = await createSession(sessionData);
-  setSessionCookie(res, sid);
-  recordSecurityAudit(req, {
-    event: "owner_sign_in",
-    result: "success",
-    userId: dbUser.id,
-  });
-  res.redirect(returnTo);
+    const sid = await createSession(sessionData);
+    setSessionCookie(res, sid);
+    recordSecurityAudit(req, {
+      event: "owner_sign_in",
+      result: "success",
+      userId: dbUser.id,
+    });
+    res.redirect(returnTo);
+  } catch (error) {
+    req.log.error({ err: error }, "Password login failed during database-backed session setup");
+    res.status(503).type("html").send(
+      renderAuthConfigPage(
+        "Password accepted, but the database is not ready. Connect Postgres in Vercel and run the database schema before signing in.",
+      ),
+    );
+  }
 });
 
 // Query params are not validated because the OIDC provider may include
