@@ -5,6 +5,9 @@ import express, {
   type NextFunction,
   type RequestHandler,
 } from "express";
+import { existsSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import cors from "cors";
 import { rateLimit } from "express-rate-limit";
 import cookieParser from "cookie-parser";
@@ -20,6 +23,32 @@ const pinoHttp = pinoHttpModule as unknown as MiddlewareFactory;
 const helmetMiddleware = helmet as unknown as MiddlewareFactory;
 const app: Express = express();
 
+const appDir = path.dirname(fileURLToPath(import.meta.url));
+const staticAssetsDir = findStaticAssetsDir();
+const staticIndexPath = staticAssetsDir
+  ? path.join(staticAssetsDir, "index.html")
+  : null;
+
+function findStaticAssetsDir(): string | null {
+  const candidates = [
+    path.join(appDir, "public"),
+    path.resolve(appDir, "..", "dist", "public"),
+    path.resolve(process.cwd(), "dist", "public"),
+    path.resolve(process.cwd(), "artifacts", "api-server", "dist", "public"),
+  ];
+
+  for (const candidate of candidates) {
+    if (existsSync(path.join(candidate, "index.html"))) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function isApiRequest(req: Request): boolean {
+  return req.path === "/api" || req.path.startsWith("/api/");
+}
 
 // Behind Replit's reverse proxy. Trust the first hop so secure-cookie detection
 // works and express-rate-limit keys off the real client IP (X-Forwarded-For).
@@ -72,8 +101,8 @@ app.use(
     credentials: true,
     origin(origin, callback) {
       // Same-origin requests and non-browser clients (curl, health probes) send
-      // no Origin header — always allow those. Otherwise require an allowlist
-      // match; a non-match simply omits CORS headers so the browser blocks it.
+      // no Origin header. Otherwise require an allowlist match; a non-match
+      // simply omits CORS headers so the browser blocks it.
       if (!origin) {
         callback(null, true);
         return;
@@ -86,6 +115,18 @@ app.use(
 app.use(cookieParser());
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+
+if (staticAssetsDir) {
+  app.use(express.static(staticAssetsDir, { index: false }));
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== "GET" || isApiRequest(req) || !staticIndexPath) {
+      next();
+      return;
+    }
+
+    res.sendFile(staticIndexPath);
+  });
+}
 
 // Rate limiting. Auth endpoints get a stricter window to slow brute-force and
 // login abuse; every other API route gets a general per-IP limit. The health
@@ -118,7 +159,7 @@ app.use("/api", router);
 
 // Global error handler. Must be registered last, after the router. Express 5
 // forwards rejected async handlers here automatically. The full error is logged
-// server-side, but the client only ever receives a generic message — no stack
+// server-side, but the client only ever receives a generic message. No stack
 // traces or internals are leaked.
 app.use((err: unknown, req: Request, res: Response, next: NextFunction) => {
   req.log.error({ err }, "Unhandled error in request pipeline");
