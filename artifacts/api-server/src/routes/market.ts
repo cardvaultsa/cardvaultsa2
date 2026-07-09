@@ -10,6 +10,19 @@ import {
 
 const router: IRouter = Router();
 
+type TcgApiResponse = {
+  data?: Array<{
+    tcgplayer?: {
+      prices?: Record<string, { market?: number }>;
+    };
+  }>;
+};
+
+type FetchJsonResponse = {
+  ok: boolean;
+  json(): Promise<unknown>;
+};
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function today(): string {
@@ -27,12 +40,12 @@ async function fetchTcgPrice(name: string, set: string): Promise<number | null> 
   try {
     const q = encodeURIComponent(`name:"${name}" set.name:"${set}"`);
     const url = `https://api.pokemontcg.io/v2/cards?q=${q}&select=id,name,tcgplayer&pageSize=10`;
-    const res = await fetch(url, {
+    const apiResponse = (await fetch(url, {
       signal: AbortSignal.timeout(8000),
       headers: { "User-Agent": "PokéVault/1.0" },
-    });
-    if (!res.ok) return null;
-    const data = await res.json() as { data?: Array<{ tcgplayer?: { prices?: Record<string, { market?: number }> } }> };
+    })) as FetchJsonResponse;
+    if (!apiResponse.ok) return null;
+    const data = (await apiResponse.json()) as TcgApiResponse;
     const cards = data.data ?? [];
     if (!cards.length) return null;
 
