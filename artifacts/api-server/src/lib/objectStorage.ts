@@ -12,6 +12,14 @@ import {
 
 const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
 
+export interface ObjectDownloadResponse {
+  status: number;
+  headers: {
+    forEach(callback: (value: string, key: string) => void): void;
+  };
+  body: ReadableStream<Uint8Array> | null;
+}
+
 export const objectStorageClient = new Storage({
   credentials: {
     audience: "replit",
@@ -96,13 +104,13 @@ export class ObjectStorageService {
   async downloadObject(
     file: File,
     cacheTtlSec: number = 3600,
-  ): Promise<globalThis.Response> {
+  ): Promise<ObjectDownloadResponse> {
     const [metadata] = await file.getMetadata();
     const aclPolicy = await getObjectAclPolicy(file);
     const isPublic = aclPolicy?.visibility === "public";
 
     const nodeStream = file.createReadStream();
-    const webStream = Readable.toWeb(nodeStream) as ReadableStream;
+    const webStream = Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
 
     const headers: Record<string, string> = {
       "Content-Type": (metadata.contentType as string) || "application/octet-stream",
