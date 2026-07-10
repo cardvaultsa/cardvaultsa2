@@ -3,6 +3,13 @@ import path from "node:path";
 
 const serverRoot = path.resolve(import.meta.dirname, "..");
 const primaryOutput = path.join(serverRoot, "dist", "public");
+const serverBundleFiles = [
+  "app.mjs",
+  "pino-worker.mjs",
+  "pino-file.mjs",
+  "pino-pretty.mjs",
+  "thread-stream-worker.mjs",
+];
 const compatibilityOutput = path.join(
   serverRoot,
   "artifacts",
@@ -15,10 +22,14 @@ await rm(compatibilityOutput, { recursive: true, force: true });
 await mkdir(path.dirname(compatibilityOutput), { recursive: true });
 await cp(primaryOutput, compatibilityOutput, { recursive: true });
 
+for (const file of serverBundleFiles) {
+  await cp(path.join(serverRoot, "dist", file), path.join(primaryOutput, file));
+}
+
 await writeFile(
   path.join(primaryOutput, "server.mjs"),
   `import express from "express";
-import app from "../app.mjs";
+import app from "./app.mjs";
 
 void express;
 
