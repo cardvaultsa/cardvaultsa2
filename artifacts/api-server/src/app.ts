@@ -31,6 +31,7 @@ const staticIndexPath = staticAssetsDir
 
 function findStaticAssetsDir(): string | null {
   const candidates = [
+    appDir,
     path.join(appDir, "public"),
     path.resolve(appDir, "..", "dist", "public"),
     path.resolve(process.cwd(), "dist", "public"),
