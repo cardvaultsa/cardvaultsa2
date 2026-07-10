@@ -3,6 +3,11 @@
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile",
   "buildCommand": "pnpm run vercel-build",
   "outputDirectory": "dist/public",
+  "functions": {
+    "api/[...path].ts": {
+      "includeFiles": "dist/public/**"
+    }
+  },
   "rewrites": [
     {
       "source": "/((?!api/).*)",
