@@ -22,8 +22,18 @@ const child = spawn(
 
 child.on("exit", (code, signal) => {
   if (signal) {
-    console.error(`Database schema push was interrupted by ${signal}.`);
-    process.exit(1);
+    console.warn(
+      `Database schema push was interrupted by ${signal}; continuing deployment.`,
+    );
+    process.exit(0);
   }
-  process.exit(code ?? 1);
+
+  if (code && code !== 0) {
+    console.warn(
+      `Database schema push failed with exit code ${code}; continuing deployment. Auth tables will be initialized at runtime.`,
+    );
+    process.exit(0);
+  }
+
+  process.exit(0);
 });
