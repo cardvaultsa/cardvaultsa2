@@ -8,6 +8,7 @@ import {
   getSessionId,
   createSession,
   deleteSession,
+  ensureAuthTables,
   getAllowedOwnerUserId,
   getAuthConfigError,
   isPasswordAuthEnabled,
@@ -112,6 +113,8 @@ function renderAuthConfigPage(message: string): string {
 }
 
 async function upsertUser(claims: Record<string, unknown>) {
+  await ensureAuthTables();
+
   const userData = {
     id: claims.sub as string,
     email: ((claims.email as string) || null) as string | null,
