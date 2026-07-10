@@ -33,6 +33,24 @@ function getSslMode(url: string): string | null {
   }
 }
 
+function sanitizeConnectionString(url: string): string {
+  try {
+    const parsedUrl = new URL(url);
+    for (const param of [
+      "ssl",
+      "sslmode",
+      "sslcert",
+      "sslkey",
+      "sslrootcert",
+    ]) {
+      parsedUrl.searchParams.delete(param);
+    }
+    return parsedUrl.toString();
+  } catch {
+    return url;
+  }
+}
+
 function createPoolConfig(): pg.PoolConfig | undefined {
   if (!connectionString) {
     return undefined;
@@ -45,7 +63,7 @@ function createPoolConfig(): pg.PoolConfig | undefined {
   }
 
   return {
-    connectionString,
+    connectionString: sanitizeConnectionString(connectionString),
     ssl: {
       rejectUnauthorized:
         process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "true",
