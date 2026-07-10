@@ -1,8 +1,9 @@
 import * as client from "openid-client";
 import crypto from "crypto";
 import { type Request, type Response } from "express";
-import { db, pool, sessionsTable } from "@workspace/db";
+import { db, sessionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { ensureDatabaseSchema } from "./dbBootstrap";
 export interface AuthUser {
   id: string;
   username?: string | null;
@@ -24,37 +25,9 @@ export interface SessionData {
 }
 
 let oidcConfig: client.Configuration | null = null;
-let authTablesReady: Promise<void> | null = null;
 
 export function ensureAuthTables(): Promise<void> {
-  authTablesReady ??= (async () => {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS "users" (
-        "id" varchar PRIMARY KEY,
-        "email" varchar UNIQUE,
-        "first_name" varchar,
-        "last_name" varchar,
-        "profile_image_url" varchar,
-        "created_at" timestamptz NOT NULL DEFAULT now(),
-        "updated_at" timestamptz NOT NULL DEFAULT now()
-      );
-    `);
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS "sessions" (
-        "sid" varchar PRIMARY KEY,
-        "sess" jsonb NOT NULL,
-        "expire" timestamp NOT NULL
-      );
-    `);
-    await pool.query(
-      `CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "sessions" ("expire");`,
-    );
-  })().catch((error) => {
-    authTablesReady = null;
-    throw error;
-  });
-
-  return authTablesReady;
+  return ensureDatabaseSchema();
 }
 
 export function isPasswordAuthEnabled(): boolean {
