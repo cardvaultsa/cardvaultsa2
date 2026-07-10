@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type NextFunction, type Request, type Response } from "express";
 import healthRouter from "./health";
 import authRouter from "./auth";
 import storageRouter from "./storage";
@@ -16,11 +16,25 @@ import trashRouter from "./trash";
 import backupRouter from "./backup";
 import marketRouter from "./market";
 import analyticsRouter from "./analytics";
+import { ensureDatabaseSchema } from "../lib/dbBootstrap";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(authRouter);
+router.use(async (req: Request, res: Response, next: NextFunction) => {
+  if (!req.isAuthenticated()) {
+    next();
+    return;
+  }
+
+  try {
+    await ensureDatabaseSchema();
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 router.use(storageRouter);
 router.use(collectionRouter);   // must precede cardsRouter so /cards/duplicates isn't swallowed by /cards/:id
 router.use(cardsRouter);
