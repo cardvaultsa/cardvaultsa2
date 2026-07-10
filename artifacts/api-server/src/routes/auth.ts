@@ -112,6 +112,37 @@ function renderAuthConfigPage(message: string): string {
 </html>`;
 }
 
+function describeDatabaseSetupError(error: unknown): string {
+  const hasDatabaseUrl = Boolean(
+    process.env.DATABASE_URL ??
+      process.env.POSTGRES_URL ??
+      process.env.POSTGRES_URL_NON_POOLING ??
+      process.env.POSTGRES_PRISMA_URL,
+  );
+
+  if (!hasDatabaseUrl) {
+    return "No database connection env var is available at runtime. Link Postgres to this Vercel project for Production and redeploy.";
+  }
+
+  const details = error as { code?: unknown; message?: unknown };
+  const code = typeof details.code === "string" ? details.code : null;
+  const message =
+    typeof details.message === "string"
+      ? details.message.replace(/postgres(?:ql)?:\/\/\S+/gi, "[database-url]")
+      : "Unknown database error";
+
+  if (code === "28P01") return "Database rejected the username or password.";
+  if (code === "3D000") return "The configured database name does not exist.";
+  if (code === "42501") return "The database user does not have permission to create or write tables.";
+  if (code === "42P01") return "A required database table is missing and could not be created.";
+  if (code === "42704") return "A required database type is missing and could not be created.";
+  if (code === "ENOTFOUND") return "The database host could not be found from Vercel.";
+  if (code === "ECONNREFUSED") return "Vercel could reach the database host, but the connection was refused.";
+  if (code === "ETIMEDOUT") return "The database connection timed out from Vercel.";
+
+  return `${code ? `${code}: ` : ""}${message}`;
+}
+
 async function upsertUser(claims: Record<string, unknown>) {
   await ensureAuthTables();
 
@@ -239,7 +270,7 @@ router.post("/login", async (req: Request, res: Response) => {
     req.log.error({ err: error }, "Password login failed during database-backed session setup");
     res.status(503).type("html").send(
       renderAuthConfigPage(
-        "Password accepted, but the database is not ready. Connect Postgres in Vercel and run the database schema before signing in.",
+        `Password accepted, but database session setup failed: ${describeDatabaseSetupError(error)}`,
       ),
     );
   }
