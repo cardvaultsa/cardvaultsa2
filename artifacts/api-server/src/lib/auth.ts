@@ -1,7 +1,7 @@
 import * as client from "openid-client";
 import crypto from "crypto";
 import { type Request, type Response } from "express";
-import { db, sessionsTable } from "@workspace/db";
+import { db, pool, sessionsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 export interface AuthUser {
   id: string;
@@ -24,6 +24,38 @@ export interface SessionData {
 }
 
 let oidcConfig: client.Configuration | null = null;
+let authTablesReady: Promise<void> | null = null;
+
+export function ensureAuthTables(): Promise<void> {
+  authTablesReady ??= (async () => {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "users" (
+        "id" varchar PRIMARY KEY,
+        "email" varchar UNIQUE,
+        "first_name" varchar,
+        "last_name" varchar,
+        "profile_image_url" varchar,
+        "created_at" timestamptz NOT NULL DEFAULT now(),
+        "updated_at" timestamptz NOT NULL DEFAULT now()
+      );
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS "sessions" (
+        "sid" varchar PRIMARY KEY,
+        "sess" jsonb NOT NULL,
+        "expire" timestamp NOT NULL
+      );
+    `);
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "sessions" ("expire");`,
+    );
+  })().catch((error) => {
+    authTablesReady = null;
+    throw error;
+  });
+
+  return authTablesReady;
+}
 
 export function isPasswordAuthEnabled(): boolean {
   return !!process.env.ADMIN_PASSWORD && process.env.AUTH_MODE !== "oidc";
@@ -64,6 +96,7 @@ export async function getOidcConfig(): Promise<client.Configuration> {
 }
 
 export async function createSession(data: SessionData): Promise<string> {
+  await ensureAuthTables();
   const sid = crypto.randomBytes(32).toString("hex");
   await db.insert(sessionsTable).values({
     sid,
@@ -74,6 +107,7 @@ export async function createSession(data: SessionData): Promise<string> {
 }
 
 export async function getSession(sid: string): Promise<SessionData | null> {
+  await ensureAuthTables();
   const [row] = await db
     .select()
     .from(sessionsTable)
@@ -91,6 +125,7 @@ export async function updateSession(
   sid: string,
   data: SessionData,
 ): Promise<void> {
+  await ensureAuthTables();
   await db
     .update(sessionsTable)
     .set({
@@ -101,6 +136,7 @@ export async function updateSession(
 }
 
 export async function deleteSession(sid: string): Promise<void> {
+  await ensureAuthTables();
   await db.delete(sessionsTable).where(eq(sessionsTable.sid, sid));
 }
 
