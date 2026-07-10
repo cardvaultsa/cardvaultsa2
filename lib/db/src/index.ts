@@ -16,11 +16,46 @@ if (!connectionString) {
   );
 }
 
+function isLocalDatabase(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname;
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+  } catch {
+    return false;
+  }
+}
+
+function getSslMode(url: string): string | null {
+  try {
+    return process.env.PGSSLMODE ?? new URL(url).searchParams.get("sslmode");
+  } catch {
+    return process.env.PGSSLMODE ?? null;
+  }
+}
+
+function createPoolConfig(): pg.PoolConfig | undefined {
+  if (!connectionString) {
+    return undefined;
+  }
+
+  const sslMode = getSslMode(connectionString);
+  const sslDisabled = sslMode === "disable" || isLocalDatabase(connectionString);
+  if (sslDisabled) {
+    return { connectionString };
+  }
+
+  return {
+    connectionString,
+    ssl: {
+      rejectUnauthorized:
+        process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === "true",
+    },
+  };
+}
+
 function createPool(): pg.Pool {
   try {
-    return new Pool(
-      connectionString ? { connectionString } : undefined,
-    );
+    return new Pool(createPoolConfig());
   } catch (error) {
     console.error(
       "Invalid database connection string; database-backed routes will fail until it is fixed.",
