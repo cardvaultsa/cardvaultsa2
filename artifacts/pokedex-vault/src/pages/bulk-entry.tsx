@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { Layout } from "@/components/layout";
 import { useBulkCreateCards, type CardInput } from "@workspace/api-client-react";
 import { BarcodeScanner } from "@/components/barcode-scanner";
+import { CardPhotoIdentifier, type IdentifiedCardCandidate } from "@/components/card-photo-identifier";
 import { Plus, Trash2, CheckCircle } from "lucide-react";
 
 const CONDITIONS = ["mint", "near_mint", "lightly_played", "moderately_played", "heavily_played", "damaged"];
@@ -34,6 +35,22 @@ export default function BulkEntry() {
 
   const addRow = () => setRows((prev) => [...prev, emptyRow()]);
   const removeRow = (i: number) => setRows((prev) => prev.filter((_, idx) => idx !== i));
+  const applyIdentifiedCard = (candidate: IdentifiedCardCandidate) => {
+    setRows((prev) =>
+      prev.map((row, idx) =>
+        idx === activeRow
+          ? {
+              ...row,
+              name: candidate.name,
+              set: candidate.set ?? row.set,
+              cardNumber: candidate.cardNumber ?? row.cardNumber,
+              rarity: candidate.rarity ?? row.rarity,
+              marketValue: candidate.marketValue ?? row.marketValue,
+            }
+          : row,
+      ),
+    );
+  };
 
   const validRows = rows.filter((r) => r.name.trim() && r.set.trim());
 
@@ -64,16 +81,19 @@ export default function BulkEntry() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
-          <BarcodeScanner
-            label="Scan to Pre-fill Name"
-            onDetected={(val) => {
-              setRow(activeRow, "name", val);
-            }}
-          />
-          <span className="text-xs text-muted-foreground">
-            Scanning fills row {activeRow + 1}'s name field.
-          </span>
+        <div className="space-y-3 rounded-lg border border-border bg-card/40 p-3">
+          <CardPhotoIdentifier onUseCandidate={applyIdentifiedCard} />
+          <div className="flex items-center gap-3 flex-wrap">
+            <BarcodeScanner
+              label="Scan Sealed Barcode"
+              onDetected={(val) => {
+                setRow(activeRow, "name", val);
+              }}
+            />
+            <span className="text-xs text-muted-foreground">
+              Barcode scanning is mainly for sealed products. Photo ID fills row {activeRow + 1}.
+            </span>
+          </div>
         </div>
 
         <div className="space-y-2">
@@ -88,7 +108,7 @@ export default function BulkEntry() {
                   {i + 1}
                 </span>
                 <span className="text-xs text-muted-foreground">
-                  {row.name && row.set ? `${row.name} · ${row.set}` : "Incomplete row"}
+                  {row.name && row.set ? `${row.name} / ${row.set}` : "Incomplete row"}
                 </span>
                 {rows.length > 1 && (
                   <button onClick={(e) => { e.stopPropagation(); removeRow(i); }} className="ml-auto text-muted-foreground hover:text-destructive transition-colors">
@@ -96,7 +116,7 @@ export default function BulkEntry() {
                   </button>
                 )}
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-8 gap-2">
                 <div className="col-span-2">
                   <input
                     className="w-full border border-input rounded px-2 py-1.5 text-xs bg-input"
@@ -112,6 +132,24 @@ export default function BulkEntry() {
                     placeholder="Set *"
                     value={row.set}
                     onChange={(e) => setRow(i, "set", e.target.value)}
+                    onFocus={() => setActiveRow(i)}
+                  />
+                </div>
+                <div>
+                  <input
+                    className="w-full border border-input rounded px-2 py-1.5 text-xs bg-input"
+                    placeholder="No."
+                    value={row.cardNumber ?? ""}
+                    onChange={(e) => setRow(i, "cardNumber", e.target.value || undefined)}
+                    onFocus={() => setActiveRow(i)}
+                  />
+                </div>
+                <div>
+                  <input
+                    className="w-full border border-input rounded px-2 py-1.5 text-xs bg-input"
+                    placeholder="Rarity"
+                    value={row.rarity ?? ""}
+                    onChange={(e) => setRow(i, "rarity", e.target.value || undefined)}
                     onFocus={() => setActiveRow(i)}
                   />
                 </div>
@@ -169,7 +207,7 @@ export default function BulkEntry() {
 
         {bulkCreate.isError && (
           <div className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-lg p-3">
-            Failed to save — please check your entries and try again.
+            Failed to save - please check your entries and try again.
           </div>
         )}
       </div>
