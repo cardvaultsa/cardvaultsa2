@@ -14,6 +14,8 @@ export interface IdentifiedCardCandidate {
 
 interface CardPhotoIdentifierProps {
   onUseCandidate: (candidate: IdentifiedCardCandidate) => void;
+  label?: string;
+  description?: string;
 }
 
 function getAuthHeaders(): HeadersInit {
@@ -37,7 +39,26 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
-export function CardPhotoIdentifier({ onUseCandidate }: CardPhotoIdentifierProps) {
+function errorToMessage(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (typeof record.message === "string") return record.message;
+    if (typeof record.error === "string") return record.error;
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "Card photo identification failed.";
+    }
+  }
+  return "Card photo identification failed.";
+}
+
+export function CardPhotoIdentifier({
+  onUseCandidate,
+  label = "Scan Card",
+  description = "Take a clear front photo and pick the best online Pokemon TCG match.",
+}: CardPhotoIdentifierProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isIdentifying, setIsIdentifying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -64,11 +85,11 @@ export function CardPhotoIdentifier({ onUseCandidate }: CardPhotoIdentifierProps
         body: JSON.stringify({ imageDataUrl }),
       });
       const data = await response.json().catch(() => null) as
-        | { candidates?: IdentifiedCardCandidate[]; error?: string }
+        | { candidates?: IdentifiedCardCandidate[]; error?: unknown; message?: unknown }
         | null;
 
       if (!response.ok) {
-        throw new Error(data?.error ?? "Card photo identification failed.");
+        throw new Error(errorToMessage(data?.error ?? data?.message));
       }
 
       const matches = data?.candidates ?? [];
@@ -78,7 +99,7 @@ export function CardPhotoIdentifier({ onUseCandidate }: CardPhotoIdentifierProps
       }
       setCandidates(matches);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Card photo identification failed.");
+      setError(errorToMessage(err));
     } finally {
       setIsIdentifying(false);
       if (inputRef.current) inputRef.current.value = "";
@@ -86,20 +107,21 @@ export function CardPhotoIdentifier({ onUseCandidate }: CardPhotoIdentifierProps
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2 flex-wrap">
+    <div className="space-y-3">
+      <div className="flex items-start gap-3">
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
           disabled={isIdentifying}
-          className="flex items-center gap-2 border border-border text-sm font-medium px-3 py-2 rounded-md bg-card hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50"
+          className="flex shrink-0 items-center gap-2 border border-primary/40 text-sm font-semibold px-3 py-2 rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50"
         >
           <Camera className="h-4 w-4" />
-          {isIdentifying ? "Identifying..." : "Photo Identify Card"}
+          {isIdentifying ? "Matching..." : label}
         </button>
-        <span className="text-xs text-muted-foreground">
-          Uses a front photo, then matches online Pokemon TCG cards.
-        </span>
+        <div className="min-w-0">
+          <div className="text-sm font-medium">Photo match</div>
+          <p className="text-xs leading-5 text-muted-foreground">{description}</p>
+        </div>
       </div>
       <input
         ref={inputRef}
@@ -118,7 +140,10 @@ export function CardPhotoIdentifier({ onUseCandidate }: CardPhotoIdentifierProps
         </div>
       ) : null}
       {candidates.length > 0 ? (
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="space-y-2">
+          <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Select Match
+          </div>
           {candidates.map((candidate) => (
             <button
               key={candidate.id}
@@ -127,7 +152,7 @@ export function CardPhotoIdentifier({ onUseCandidate }: CardPhotoIdentifierProps
                 onUseCandidate(candidate);
                 setCandidates([]);
               }}
-              className="flex items-center gap-3 rounded-md border border-border bg-card p-2 text-left hover:bg-muted transition-colors"
+              className="flex w-full items-center gap-3 rounded-md border border-border bg-card p-2 text-left hover:bg-muted transition-colors"
             >
               {candidate.imageUrl ? (
                 <img
