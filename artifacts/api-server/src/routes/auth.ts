@@ -51,8 +51,8 @@ function setOidcCookie(res: Response, name: string, value: string) {
   });
 }
 
-function redirectToPath(req: Request, res: Response, path: string): void {
-  res.redirect(new URL(path, getOrigin(req)).href);
+function redirectToPath(res: Response, path: string, status = 302): void {
+  res.redirect(status, path);
 }
 
 function getSafeReturnTo(value: unknown): string {
@@ -269,7 +269,7 @@ router.post("/login", async (req: Request, res: Response) => {
       result: "success",
       userId: dbUser.id,
     });
-    redirectToPath(req, res, returnTo);
+    redirectToPath(res, returnTo, 303);
   } catch (error) {
     req.log.error({ err: error }, "Password login failed during database-backed session setup");
     res.status(503).type("html").send(
@@ -291,7 +291,7 @@ router.get("/callback", async (req: Request, res: Response) => {
   const expectedState = req.cookies?.state;
 
   if (!codeVerifier || !expectedState) {
-    redirectToPath(req, res, "/api/login");
+    redirectToPath(res, "/api/login");
     return;
   }
 
@@ -308,7 +308,7 @@ router.get("/callback", async (req: Request, res: Response) => {
       idTokenExpected: true,
     });
   } catch {
-    redirectToPath(req, res, "/api/login");
+    redirectToPath(res, "/api/login");
     return;
   }
 
@@ -321,7 +321,7 @@ router.get("/callback", async (req: Request, res: Response) => {
 
   const claims = tokens.claims();
   if (!claims) {
-    redirectToPath(req, res, "/api/login");
+    redirectToPath(res, "/api/login");
     return;
   }
 
@@ -335,7 +335,7 @@ router.get("/callback", async (req: Request, res: Response) => {
       userId: (claims.sub as string) ?? null,
       reason: "not_owner_at_login",
     });
-    redirectToPath(req, res, "/?error=access_denied");
+    redirectToPath(res, "/?error=access_denied");
     return;
   }
 
@@ -364,7 +364,7 @@ router.get("/callback", async (req: Request, res: Response) => {
     result: "success",
     userId: dbUser.id,
   });
-  redirectToPath(req, res, returnTo);
+  redirectToPath(res, returnTo);
 });
 
 router.get("/logout", async (req: Request, res: Response) => {
@@ -379,7 +379,7 @@ router.get("/logout", async (req: Request, res: Response) => {
         userId,
       });
     }
-    redirectToPath(req, res, "/");
+    redirectToPath(res, "/");
     return;
   }
 
