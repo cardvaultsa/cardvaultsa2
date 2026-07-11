@@ -45,13 +45,12 @@ export function useAuth(): AuthState {
     const returnTo =
       `${window.location.pathname}${window.location.search}${window.location.hash}` ||
       "/";
-    const loginUrl = new URL("/api/login", window.location.origin);
-    loginUrl.searchParams.set("returnTo", returnTo);
-    window.location.assign(loginUrl.href);
+    const params = new URLSearchParams({ returnTo });
+    window.location.assign(`/api/login?${params.toString()}`);
   }, []);
 
   const logout = useCallback(() => {
-    window.location.assign(new URL("/api/logout", window.location.origin).href);
+    window.location.assign("/api/logout");
   }, []);
 
   return {
