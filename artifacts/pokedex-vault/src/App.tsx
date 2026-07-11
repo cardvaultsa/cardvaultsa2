@@ -56,14 +56,14 @@ function LoginPage({
       <div className="flex flex-col items-center gap-8 p-8">
         <div className="text-center">
           <div className="text-6xl font-black tracking-tight text-primary mb-2 glow-primary" style={{ textShadow: "0 0 40px hsl(160 65% 50% / 0.5)" }}>
-            PokÃ©Vault
+            PokeVault
           </div>
           <div className="text-muted-foreground text-sm tracking-widest uppercase">Private Collection Tracker</div>
         </div>
         <div className="w-px h-12 bg-border" />
         <div className="text-center max-w-xs">
           <p className="text-sm text-muted-foreground mb-6">
-            Track your PokÃ©mon card collection â€” purchases, sales, profit, and photos â€” all in one place.
+            Track your Pokemon card collection - purchases, sales, profit, and photos - all in one place.
           </p>
           <form onSubmit={handleSubmit} className="space-y-3">
             <input
