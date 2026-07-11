@@ -39,6 +39,25 @@ function readFileAsDataUrl(file: File): Promise<string> {
   });
 }
 
+async function postIdentifyPhoto(imageDataUrl: string) {
+  const body = JSON.stringify({ imageDataUrl });
+  const requestInit: RequestInit = {
+    method: "POST",
+    credentials: "include",
+    headers: {
+      ...getAuthHeaders(),
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    },
+    body,
+  };
+
+  const primary = await fetch("/api/cards/identify-photo", requestInit);
+  if (primary.status !== 404) return primary;
+
+  return fetch("/api/identify-photo", requestInit);
+}
+
 function errorToMessage(value: unknown): string {
   if (typeof value === "string") return value;
   if (value && typeof value === "object") {
@@ -74,16 +93,7 @@ export function CardPhotoIdentifier({
 
     try {
       const imageDataUrl = await readFileAsDataUrl(file);
-      const response = await fetch("/api/cards/identify-photo", {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          ...getAuthHeaders(),
-          Accept: "application/json",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ imageDataUrl }),
-      });
+      const response = await postIdentifyPhoto(imageDataUrl);
       const data = await response.json().catch(() => null) as
         | { candidates?: IdentifiedCardCandidate[]; error?: unknown; message?: unknown }
         | null;
