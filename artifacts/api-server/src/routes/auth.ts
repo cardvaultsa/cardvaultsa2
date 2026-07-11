@@ -116,6 +116,27 @@ function renderAuthConfigPage(message: string): string {
 </html>`;
 }
 
+function scriptJson(value: string): string {
+  return JSON.stringify(value).replaceAll("<", "\\u003c");
+}
+
+function renderPasswordSuccessPage(returnTo: string, sid: string): string {
+  return `<!doctype html>
+<html lang="en">
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>Signing in</title></head>
+  <body style="font-family: system-ui, sans-serif; padding: 32px;">
+    <p>Signing in...</p>
+    <script>
+      try {
+        window.sessionStorage.setItem("pokevault.sessionToken", ${scriptJson(sid)});
+      } catch {}
+      window.location.replace(${scriptJson(returnTo)});
+    </script>
+    <noscript><a href="${escapeHtml(returnTo)}">Continue</a></noscript>
+  </body>
+</html>`;
+}
+
 function describeDatabaseSetupError(error: unknown): string {
   const hasDatabaseUrl = Boolean(
     process.env.DATABASE_URL ??
@@ -269,7 +290,7 @@ router.post("/login", async (req: Request, res: Response) => {
       result: "success",
       userId: dbUser.id,
     });
-    redirectToPath(res, returnTo, 303);
+    res.status(200).type("html").send(renderPasswordSuccessPage(returnTo, sid));
   } catch (error) {
     req.log.error({ err: error }, "Password login failed during database-backed session setup");
     res.status(503).type("html").send(
