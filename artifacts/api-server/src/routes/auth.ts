@@ -1,4 +1,5 @@
 import * as oidc from "openid-client";
+import { randomBytes } from "node:crypto";
 import { Router, type IRouter, type Request, type Response } from "express";
 import { GetCurrentAuthUserResponse } from "@workspace/api-zod";
 import { db, usersTable } from "@workspace/db";
@@ -120,13 +121,17 @@ function scriptJson(value: string): string {
   return JSON.stringify(value).replaceAll("<", "\\u003c");
 }
 
-function renderPasswordSuccessPage(returnTo: string, sid: string): string {
+function renderPasswordSuccessPage(
+  returnTo: string,
+  sid: string,
+  nonce: string,
+): string {
   return `<!doctype html>
 <html lang="en">
   <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>Signing in</title></head>
   <body style="font-family: system-ui, sans-serif; padding: 32px;">
     <p>Signing in...</p>
-    <script>
+    <script nonce="${escapeHtml(nonce)}">
       try {
         window.sessionStorage.setItem("pokevault.sessionToken", ${scriptJson(sid)});
       } catch {}
@@ -290,7 +295,21 @@ router.post("/login", async (req: Request, res: Response) => {
       result: "success",
       userId: dbUser.id,
     });
-    res.status(200).type("html").send(renderPasswordSuccessPage(returnTo, sid));
+    const scriptNonce = randomBytes(16).toString("base64");
+    res.setHeader(
+      "Content-Security-Policy",
+      [
+        "default-src 'none'",
+        `script-src 'nonce-${scriptNonce}'`,
+        "style-src 'unsafe-inline'",
+        "base-uri 'none'",
+        "form-action 'self'",
+      ].join("; "),
+    );
+    res
+      .status(200)
+      .type("html")
+      .send(renderPasswordSuccessPage(returnTo, sid, scriptNonce));
   } catch (error) {
     req.log.error({ err: error }, "Password login failed during database-backed session setup");
     res.status(503).type("html").send(
