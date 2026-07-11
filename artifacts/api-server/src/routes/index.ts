@@ -4,6 +4,7 @@ import authRouter from "./auth";
 import storageRouter from "./storage";
 import collectionRouter from "./collection";
 import cardsRouter from "./cards";
+import photoIdentifyRouter from "./photoIdentify";
 import sealedProductsRouter from "./sealedProducts";
 import imagesRouter from "./images";
 import dashboardRouter from "./dashboard";
@@ -37,6 +38,7 @@ router.use(async (req: Request, res: Response, next: NextFunction) => {
 });
 router.use(storageRouter);
 router.use(collectionRouter);   // must precede cardsRouter so /cards/duplicates isn't swallowed by /cards/:id
+router.use(photoIdentifyRouter);
 router.use(cardsRouter);
 router.use(sealedProductsRouter);
 router.use(imagesRouter);
