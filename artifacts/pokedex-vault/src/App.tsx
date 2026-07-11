@@ -1,8 +1,9 @@
+import { useState } from "react";
 import { Switch, Route, Router as WouterRouter } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { useAuth } from "@workspace/replit-auth-web";
+import { useAuth, type LoginResult } from "@workspace/replit-auth-web";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import Cards from "@/pages/cards";
@@ -27,28 +28,64 @@ const queryClient = new QueryClient({
   },
 });
 
-function LoginPage() {
-  const { login } = useAuth();
+function LoginPage({
+  login,
+}: {
+  login: (password?: string) => Promise<LoginResult>;
+}) {
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setIsSubmitting(true);
+    try {
+      const result = await login(password);
+      if (!result.ok) {
+        setError(result.error ?? "Sign in failed.");
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-background">
       <div className="flex flex-col items-center gap-8 p-8">
         <div className="text-center">
           <div className="text-6xl font-black tracking-tight text-primary mb-2 glow-primary" style={{ textShadow: "0 0 40px hsl(160 65% 50% / 0.5)" }}>
-            PokéVault
+            PokÃ©Vault
           </div>
           <div className="text-muted-foreground text-sm tracking-widest uppercase">Private Collection Tracker</div>
         </div>
         <div className="w-px h-12 bg-border" />
         <div className="text-center max-w-xs">
           <p className="text-sm text-muted-foreground mb-6">
-            Track your Pokémon card collection — purchases, sales, profit, and photos — all in one place.
+            Track your PokÃ©mon card collection â€” purchases, sales, profit, and photos â€” all in one place.
           </p>
-          <button
-            onClick={login}
-            className="w-full bg-primary text-primary-foreground font-semibold py-3 px-8 rounded-lg hover:opacity-90 transition-opacity glow-primary"
-          >
-            Sign in to continue
-          </button>
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
+              placeholder="Admin password"
+              className="w-full rounded-lg border border-border bg-background px-4 py-3 text-sm text-foreground outline-none focus:border-primary"
+              required
+            />
+            {error ? (
+              <p className="text-sm text-destructive">{error}</p>
+            ) : null}
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full bg-primary text-primary-foreground font-semibold py-3 px-8 rounded-lg hover:opacity-90 transition-opacity glow-primary disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {isSubmitting ? "Signing in..." : "Sign in to continue"}
+            </button>
+          </form>
         </div>
       </div>
     </div>
@@ -56,7 +93,7 @@ function LoginPage() {
 }
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, login } = useAuth();
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -64,7 +101,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  if (!isAuthenticated) return <LoginPage />;
+  if (!isAuthenticated) return <LoginPage login={login} />;
   return <>{children}</>;
 }
 
