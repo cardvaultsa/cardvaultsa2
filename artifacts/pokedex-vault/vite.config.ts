@@ -23,11 +23,12 @@ export default defineConfig({
     runtimeErrorOverlay(),
     VitePWA({
       registerType: "autoUpdate",
+      cleanupOutdatedCaches: true,
       devOptions: { enabled: false },
       manifest: {
-        name: "PokéVault",
-        short_name: "PokéVault",
-        description: "Private Pokémon card collection and resale tracker",
+        name: "PokeVault",
+        short_name: "PokeVault",
+        description: "Private Pokemon card collection and resale tracker",
         theme_color: "#10b981",
         background_color: "#0f1117",
         display: "standalone",
@@ -56,7 +57,7 @@ export default defineConfig({
             urlPattern: /\/api\/(?!auth)/,
             handler: "NetworkFirst",
             options: {
-              cacheName: "pokevault-api-v1",
+              cacheName: "pokevault-api-v2",
               networkTimeoutSeconds: 8,
               cacheableResponse: { statuses: [200] },
               expiration: {
@@ -69,7 +70,7 @@ export default defineConfig({
             urlPattern: /\/api\/storage\//,
             handler: "CacheFirst",
             options: {
-              cacheName: "pokevault-images-v1",
+              cacheName: "pokevault-images-v2",
               cacheableResponse: { statuses: [200] },
               expiration: {
                 maxEntries: 500,
