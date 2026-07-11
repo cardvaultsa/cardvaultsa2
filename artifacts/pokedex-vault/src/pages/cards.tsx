@@ -12,6 +12,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus, Search, CreditCard, ArrowUpDown, ArrowUp, ArrowDown, SlidersHorizontal } from "lucide-react";
+import { CardPhotoIdentifier, type IdentifiedCardCandidate } from "@/components/card-photo-identifier";
 
 const CONDITIONS = ["mint", "near_mint", "lightly_played", "moderately_played", "heavily_played", "damaged"];
 const STATUSES = ["collection", "for_sale", "trade_binder", "grading_pile", "sold", "wishlist"] as const;
@@ -54,6 +55,17 @@ function CardForm({ onSubmit, onCancel, isLoading }: CardFormProps) {
   const setF = (k: keyof CardInput, v: string | number | undefined) =>
     setForm((f) => ({ ...f, [k]: v }));
 
+  const applyIdentifiedCard = (candidate: IdentifiedCardCandidate) => {
+    setForm((f) => ({
+      ...f,
+      name: candidate.name,
+      set: candidate.set ?? f.set,
+      cardNumber: candidate.cardNumber ?? f.cardNumber,
+      rarity: candidate.rarity ?? f.rarity,
+      marketValue: candidate.marketValue ?? f.marketValue,
+    }));
+  };
+
   const profit =
     form.purchasePrice != null && form.marketValue != null
       ? form.marketValue - form.purchasePrice
@@ -69,6 +81,13 @@ function CardForm({ onSubmit, onCancel, isLoading }: CardFormProps) {
           <h2 className="font-semibold text-lg">Add Card</h2>
         </div>
         <div className="p-5 space-y-4">
+          <div className="rounded-lg border border-primary/25 bg-primary/5 p-3">
+            <CardPhotoIdentifier
+              label="Scan Card"
+              description="Take or upload a front photo. Pick the closest match to fill this card."
+              onUseCandidate={applyIdentifiedCard}
+            />
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</label>
@@ -135,7 +154,7 @@ function CardForm({ onSubmit, onCancel, isLoading }: CardFormProps) {
                 value={form.condition ?? ""}
                 onChange={(e) => setF("condition", e.target.value)}
               >
-                <option value="">—</option>
+                <option value="">-</option>
                 {CONDITIONS.map((c) => (
                   <option key={c} value={c}>{c.replace(/_/g, " ")}</option>
                 ))}
@@ -485,9 +504,9 @@ export default function Cards() {
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold truncate">{card.name}</div>
                     <div className="text-xs text-muted-foreground truncate">
-                      {card.set}{card.cardNumber ? ` · #${card.cardNumber}` : ""}
-                      {card.rarity ? ` · ${card.rarity}` : ""}
-                      {card.grade ? ` · ${card.grader ?? ""} ${card.grade}` : ""}
+                      {card.set}{card.cardNumber ? ` / #${card.cardNumber}` : ""}
+                      {card.rarity ? ` / ${card.rarity}` : ""}
+                      {card.grade ? ` / ${card.grader ?? ""} ${card.grade}` : ""}
                     </div>
                   </div>
                   <div className="shrink-0 text-right space-y-0.5 hidden sm:block">
