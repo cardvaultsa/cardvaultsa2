@@ -13,6 +13,7 @@ const API_ROUTE_NAMES = new Set([
   "expenses",
   "export",
   "healthz",
+  "identify-photo",
   "images",
   "listing",
   "login",
