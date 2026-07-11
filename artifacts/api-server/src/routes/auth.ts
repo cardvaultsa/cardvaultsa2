@@ -142,6 +142,11 @@ function renderPasswordSuccessPage(
 </html>`;
 }
 
+function wantsJson(req: Request): boolean {
+  return req.is("application/json") === "application/json" ||
+    req.accepts(["json", "html"]) === "json";
+}
+
 function describeDatabaseSetupError(error: unknown): string {
   const hasDatabaseUrl = Boolean(
     process.env.DATABASE_URL ??
@@ -261,6 +266,10 @@ router.post("/login", async (req: Request, res: Response) => {
 
   const returnTo = getSafeReturnTo(req.body?.returnTo);
   if (req.body?.password !== process.env.ADMIN_PASSWORD) {
+    if (wantsJson(req)) {
+      res.status(401).json({ error: "Incorrect password" });
+      return;
+    }
     res.status(401).type("html").send(
       renderPasswordLoginPage(returnTo, "Incorrect password"),
     );
@@ -295,6 +304,10 @@ router.post("/login", async (req: Request, res: Response) => {
       result: "success",
       userId: dbUser.id,
     });
+    if (wantsJson(req)) {
+      res.json({ sessionToken: sid, user: sessionData.user });
+      return;
+    }
     const scriptNonce = randomBytes(16).toString("base64");
     res.setHeader(
       "Content-Security-Policy",
