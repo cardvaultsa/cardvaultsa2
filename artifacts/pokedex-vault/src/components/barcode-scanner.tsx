@@ -31,10 +31,10 @@ export function BarcodeScanner({ onDetected, label = "Scan Barcode" }: BarcodeSc
         }
       }
       setStatus("error");
-      setErrorMsg("No barcode detected — enter the value manually.");
+      setErrorMsg("No barcode detected - enter the value manually.");
     } catch {
       setStatus("error");
-      setErrorMsg("Scan failed — try entering the value manually.");
+      setErrorMsg("Scan failed - try entering the value manually.");
     }
     if (inputRef.current) inputRef.current.value = "";
   };
