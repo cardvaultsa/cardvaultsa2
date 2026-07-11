@@ -106,7 +106,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     <div className="flex flex-col h-full bg-sidebar text-sidebar-foreground">
       <div className="px-4 py-5 border-b border-sidebar-border">
         <div className="font-black text-xl tracking-tight text-sidebar-foreground">
-          PokéVault
+          PokeVault
         </div>
         <div className="text-xs text-sidebar-foreground/40 mt-0.5 tracking-widest uppercase">
           Collection Tracker
@@ -199,10 +199,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
           >
             {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
-          <div className="font-black text-lg tracking-tight">PokéVault</div>
+          <div className="font-black text-lg tracking-tight">PokeVault</div>
         </header>
 
-        {/* Main content — extra bottom padding on mobile for bottom nav */}
+        {/* Main content - extra bottom padding on mobile for bottom nav */}
         <main className="flex-1 p-4 lg:p-6 overflow-auto">
           <div className="pb-20 lg:pb-0">
             {children}
